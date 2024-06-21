@@ -3,6 +3,7 @@ module email
 go 1.21.1
 
 require (
+	github.com/Nik-U/pbc v0.0.0-20181205041846-3e516ca0c5d6
 	github.com/ethereum/go-ethereum v1.14.5
 	github.com/fentec-project/bn256 v0.0.0-20190726093940-0d0fc8bfeed0
 	github.com/fentec-project/gofe v0.0.0-20220829150550-ccc7482d20ef
