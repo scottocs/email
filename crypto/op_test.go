@@ -1,7 +1,7 @@
-package crypto
+package main
 
 import (
-	"basics/crypto/lwdabe"
+	"email/crypto/lwdabe"
 	//"basics/crypto/lwdabe"
 	"crypto/rand"
 	"fmt"

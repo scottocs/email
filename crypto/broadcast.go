@@ -145,13 +145,13 @@ func (adsk *AdvertiserSecretKey) Decrypt(S []int, hdr Header, adpk AdvertiserPub
 }
 
 func main() {
-	n := 1
+	n := 10
 	cpk, secretKeys, err := Setup(n)
 	if err != nil {
 		log.Fatalln(err)
 	}
 
-	S := []int{0}
+	S := []int{0, 1, 2, 3, 4}
 	bpk := cpk.broadcastPublicKey()
 	hdr, K, err := bpk.Encrypt(S)
 	if err != nil {
