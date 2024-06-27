@@ -1,8 +1,6 @@
 package stealth
 
 import (
-	//"basics/crypto/bn128"
-	//"basics/crypto/lwdabe"
 	"crypto/rand"
 	"fmt"
 	"github.com/fentec-project/bn256"

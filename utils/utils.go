@@ -5,6 +5,8 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"fmt"
+	"github.com/fentec-project/bn256"
+	"golang.org/x/crypto/sha3"
 	"log"
 	"math/big"
 	"math/rand"
@@ -112,4 +114,11 @@ func RandomACP(operands []string) string {
 	}
 
 	return expression
+}
+func Hash2G1(msg string) *bn256.G1 {
+	hash := sha3.NewLegacyKeccak256()
+	hash.Write([]byte(msg))
+	v := hash.Sum(nil)
+	return new(bn256.G1).ScalarBaseMult(new(big.Int).SetBytes(v))
+
 }
