@@ -1,10 +1,7 @@
-package main
+package broadcast
 
 import (
 	"crypto/rand"
-	"fmt"
-	"log"
-
 	"github.com/fentec-project/bn256"
 )
 
@@ -142,25 +139,4 @@ func (adsk *AdvertiserSecretKey) Decrypt(S []int, hdr Header, adpk AdvertiserPub
 	denominator := new(bn256.GT).Neg(bn256.Pair(val, hdr.C0))
 	out := new(bn256.GT).Add(numerator, denominator)
 	return out
-}
-
-func main() {
-	n := 10
-	cpk, secretKeys, err := Setup(n)
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	S := []int{0, 1, 2, 3, 4}
-	bpk := cpk.broadcastPublicKey()
-	hdr, K, err := bpk.Encrypt(S)
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	chkK := secretKeys[0].Decrypt(S, hdr, cpk.getPublicKey(0)).Marshal()
-	if string(K.Marshal()) != string(chkK) {
-		fmt.Printf("Equality check failed\nK: %v\nchkK: %v", K.Marshal(), chkK)
-	}
-	fmt.Printf("Equality check success\n")
 }
