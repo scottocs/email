@@ -21,7 +21,7 @@ func TestStealth(t *testing.T) {
 		new(bn256.G1).ScalarBaseMult(b),
 	}
 	stealthPub := CalculatePub(pub)
-	stealthPriv := ResolveSec(priv, stealthPub)
+	stealthPriv := ResolvePriv(priv, stealthPub)
 	fmt.Println(stealthPub.S)
 	fmt.Println(new(bn256.G1).ScalarBaseMult(stealthPriv))
 }
