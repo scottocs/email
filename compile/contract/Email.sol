@@ -195,6 +195,8 @@ contract Email {
 	}
 	mapping(string => PK) public name2PK;
 	mapping(string => MailRev) public cid2Mails;
+	mapping(string => BrdcastMailRev) public cid2BrdcastMails;
+
 	struct PK {
 		G1Point A;
 		G1Point B;
@@ -203,13 +205,28 @@ contract Email {
 		G1Point R;
 		G1Point S;
 	}
+	struct BrdcastCT{
+		G1Point C0;
+		G1Point C1;
+	}
 	struct ElGamalCT{
 		G1Point C1;
 		G1Point C2;
 	}
+	struct DomainProof{
+		G1Point skipows;
+		G1Point pki;
+		G1Point vpows;
+	}
 	struct MailRev{
 		StealthAddrPub pub;		
 		ElGamalCT ct;
+		string[] names;
+	}
+
+	struct BrdcastMailRev{
+		BrdcastCT ct;
+		DomainProof proof;
 		string[] names;
 	}
 
@@ -227,6 +244,10 @@ contract Email {
 
 	function mailTo(StealthAddrPub memory saPub, ElGamalCT memory ct, string memory cid, string[] memory names) public payable  {
 		cid2Mails[cid] = MailRev(saPub, ct, names);
+		//TODO	emit event
+	}
+	function brdcastTo(BrdcastCT memory ct, DomainProof memory proof, string memory cid, string[] memory names) public payable  {
+		cid2BrdcastMails[cid] = BrdcastMailRev(ct, proof, names);
 		//TODO	emit event
 	}
 	function downloadMail(string memory cid) public view returns (MailRev memory) {

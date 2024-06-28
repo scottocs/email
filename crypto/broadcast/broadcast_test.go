@@ -2,27 +2,23 @@ package broadcast
 
 import (
 	"fmt"
-	"log"
 	"testing"
 )
 
 func TestBroadcast(t *testing.T) {
-	n := 10
-	cpk, secretKeys, err := Setup(n)
-	if err != nil {
-		log.Fatalln(err)
-	}
+	n := 5
+	cpk, secretKeys := Setup(n)
+	//fmt.Println(cpk)
+	//fmt.Println(secretKeys)
 
-	S := []int{0, 1, 2, 3, 4}
-	bpk := cpk.broadcastPublicKey()
-	hdr, K, err := bpk.Encrypt(S)
-	if err != nil {
-		log.Fatalln(err)
-	}
+	S := []int{1, 3}
+	domainPK := cpk.BuildDomainPK(S)
+	hdr, beK := cpk.Encrypt(domainPK)
+	//hdr, K, err := bpk.Encrypt(S)
 
-	chkK := secretKeys[0].Decrypt(S, hdr, cpk.getPublicKey(0)).Marshal()
-	if string(K.Marshal()) != string(chkK) {
-		fmt.Printf("Equality check failed\nK: %v\nchkK: %v", K.Marshal(), chkK)
+	beKp := secretKeys[3].Decrypt(S, hdr, cpk)
+	if beK.String() != beKp.String() {
+		fmt.Printf("Equality check failed\nK: %v\nchkK: %v", beK.String(), beKp.String())
 	}
 	fmt.Printf("Equality check success\n")
 }

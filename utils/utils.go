@@ -81,13 +81,12 @@ func Transact(client *ethclient.Client, privatekey string, value *big.Int, ctc *
 	switch para[0] {
 	case "HashToG1":
 		f = ctc.HashToG1
-		break
 	case "UploadPK":
 		f = ctc.UploadPK
-		break
 	case "MailTo":
 		f = ctc.MailTo
-		break
+	case "BrdcastTo":
+		f = ctc.BrdcastTo
 	}
 
 	// 获取函数的反射值
@@ -105,6 +104,7 @@ func Transact(client *ethclient.Client, privatekey string, value *big.Int, ctc *
 	tx := resultValues[0].Interface().(*types.Transaction)
 	receipt, _ := bind.WaitMined(context.Background(), client, tx)
 	//fmt.Printf("HashToG1() Gas used: %d\n", receipt.GasUsed)
+	fmt.Printf("%v Gas used: %d\n", para[0], receipt.GasUsed)
 	return receipt
 	//// 处理返回值
 	//var result int
@@ -220,8 +220,8 @@ func InitBIP32Wallet(client *ethclient.Client, privatekey1 string) {
 		//bal, _ := client.BalanceAt(context.Background(), GetAddr(childKeyStr), nil)
 		//fmt.Printf("%dthmasterBalance: %s ether\n", i+10, bal.Div(bal, ether))
 	}
-	senderBalance, _ := client.BalanceAt(context.Background(), GetAddr(privatekey1), nil)
-	fmt.Printf("senderBalance: %s ether\n", senderBalance.Div(senderBalance, ether))
+	//senderBalance, _ := client.BalanceAt(context.Background(), GetAddr(privatekey1), nil)
+	//fmt.Printf("senderBalance: %s ether\n", senderBalance.Div(senderBalance, ether))
 	godotenv.Write(envMap, ".env")
 
 	//"e5c2c2a3f5b7aa82c790d131b209443befd377c84d490f2cf4d5ed408f008ae0"
