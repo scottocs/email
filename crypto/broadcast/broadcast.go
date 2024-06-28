@@ -8,35 +8,16 @@ import (
 )
 
 type CompletePublicKey struct {
-	//n int
-	//P    bn256.G1
 	PArr []bn256.G1
-	//Q    bn256.G2
 	QArr []bn256.G2
 	V    bn256.G1
 }
-
-//type BroadcastPublicKey struct {
-//	//n    int
-//	//P    bn256.G1
-//	PArr []bn256.G1
-//	//Q    bn256.G2
-//	Q1 bn256.G2
-//	V  bn256.G1
-//}
 
 type Header struct {
 	C0  *bn256.G1
 	C0p *bn256.G2
 	C1  *bn256.G1
 }
-
-//type AdvertiserPublicKey struct {
-//	N  int
-//	Qi bn256.G2
-//	//DomainPK1 bn256.G1
-//	PArr []bn256.G1
-//}
 
 type AdvertiserSecretKey struct {
 	i  int
@@ -49,11 +30,7 @@ func Setup(n int) (CompletePublicKey, []AdvertiserSecretKey) {
 	//_, Q, _ := bn256.RandomG2(r)
 	P := new(bn256.G1).ScalarBaseMult(big.NewInt(1))
 	Q := new(bn256.G2).ScalarBaseMult(big.NewInt(1))
-	//fmt.Println(P.String())
-	//fmt.Println(Q.String())
 	alpha, _ := rand.Int(r, bn256.Order)
-	alpha = big.NewInt(2) //
-	// build 2n-1 P_i values
 	accumulatorP := new(bn256.G1).Set(P)
 	accumulatorQ := new(bn256.G2).Set(Q)
 	PArr := make([]bn256.G1, 2*n+1)
@@ -75,7 +52,7 @@ func Setup(n int) (CompletePublicKey, []AdvertiserSecretKey) {
 	}
 
 	gamma, _ := rand.Int(r, bn256.Order)
-	gamma = big.NewInt(2) //
+	//gamma = big.NewInt(2) //
 	V := new(bn256.G1).ScalarMult(P, gamma)
 	//fmt.Println(V.String() == PArr[1].String())
 	privateKeys := make([]AdvertiserSecretKey, n+1)
@@ -84,7 +61,6 @@ func Setup(n int) (CompletePublicKey, []AdvertiserSecretKey) {
 			i:  i,
 			Di: *new(bn256.G1).ScalarMult(&PArr[i], gamma),
 		}
-		//fmt.Println(i, privateKeys[i].Di.String())
 	}
 
 	return CompletePublicKey{

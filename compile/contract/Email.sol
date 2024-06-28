@@ -1,7 +1,4 @@
 pragma solidity ^0.8.0;
-//pragma experimental ABIEncoderV2;
-// import "../contracts/bn128G2.sol";
-//import "../contracts/strings.sol";
 contract Email {
 	uint256 constant FIELD_ORDER = 0x30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd47;
 
@@ -24,6 +21,13 @@ contract Email {
 		uint[2] X;
 		uint[2] Y;
 	}
+	G1Point G1 = G1Point(1, 2);
+    G2Point G2 = G2Point(
+        [11559732032986387107991004021392285783925812861821192530917403151452391805634,
+        10857046999023057135944570762232829481370756359578518086990519993285655852781],
+        [4082367875863433681332203403145435568316851327593401208105741076214120093531,
+        8495653923123431417604973247489272438418190587263600148770280649306958101930]
+    );
 
 
 	// (P+1) / 4
@@ -78,21 +82,6 @@ contract Email {
         require(success);
         return output[0];
     }
-	
-
-	
-
-	/// return the generator of G2
-	function P2() pure internal returns(G2Point memory) {
-		return G2Point(
-			[11559732032986387107991004021392285783925812861821192530917403151452391805634,
-				10857046999023057135944570762232829481370756359578518086990519993285655852781
-			],
-			[4082367875863433681332203403145435568316851327593401208105741076214120093531,
-				8495653923123431417604973247489272438418190587263600148770280649306958101930
-			]
-		);
-	}
 
 	/// return the sum of two points of G1
 	function g1add(G1Point memory p1, G1Point memory p2) view internal returns(G1Point memory r) {
@@ -196,6 +185,7 @@ contract Email {
 	mapping(string => PK) public name2PK;
 	mapping(string => MailRev) public cid2Mails;
 	mapping(string => BrdcastMailRev) public cid2BrdcastMails;
+	bool public pairingRes;
 
 	struct PK {
 		G1Point A;
@@ -215,7 +205,7 @@ contract Email {
 	}
 	struct DomainProof{
 		G1Point skipows;
-		G1Point pki;
+		G2Point pki;
 		G1Point vpows;
 	}
 	struct MailRev{
@@ -246,10 +236,22 @@ contract Email {
 		cid2Mails[cid] = MailRev(saPub, ct, names);
 		//TODO	emit event
 	}
+
 	function brdcastTo(BrdcastCT memory ct, DomainProof memory proof, string memory cid, string[] memory names) public payable  {
 		cid2BrdcastMails[cid] = BrdcastMailRev(ct, proof, names);
+		G1Point[] memory p1Arr = new G1Point[](2);
+		G2Point[] memory p2Arr = new G2Point[](2);
+		p1Arr[0] = negate(proof.skipows);
+		p1Arr[1] = proof.vpows;
+		p2Arr[0] = G2;
+		p2Arr[1] = proof.pki;
+		pairingRes=pairing(p1Arr, p2Arr);
 		//TODO	emit event
 	}
+	function getPairingRes() public view returns (bool) {
+		return pairingRes;
+	}
+
 	function downloadMail(string memory cid) public view returns (MailRev memory) {
 		return cid2Mails[cid];
 	}

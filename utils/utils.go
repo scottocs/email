@@ -241,6 +241,24 @@ func G1ToPoint(point *bn256.G1) contract.EmailG1Point {
 	return g1Point
 }
 
+func G2ToPoint(point *bn256.G2) contract.EmailG2Point {
+	// Marshal the G1 point to get the X and Y coordinates as bytes
+	pointBytes := point.Marshal()
+	//fmt.Println(point.Marshal())
+
+	// Create big.Int for X and Y coordinates
+	a1 := new(big.Int).SetBytes(pointBytes[:32])
+	a2 := new(big.Int).SetBytes(pointBytes[32:64])
+	b1 := new(big.Int).SetBytes(pointBytes[64:96])
+	b2 := new(big.Int).SetBytes(pointBytes[96:128])
+
+	g2Point := contract.EmailG2Point{
+		X: [2]*big.Int{a1, a2},
+		Y: [2]*big.Int{b1, b2},
+	}
+	return g2Point
+}
+
 func PointToG1(point contract.EmailG1Point) *bn256.G1 {
 	// Marshal the G1 point to get the X and Y coordinates as bytes
 	//new(bn256.G1).Un

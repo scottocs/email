@@ -106,11 +106,6 @@ func main() {
 	domainPK := cpk.BuildDomainPK(S)
 	hdr, beK := cpk.Encrypt(domainPK)
 	senderSK := secretKeys[senderIndex].Di
-	senderPK := cpk.PArr[senderIndex]
-	x, _ := rand.Int(rand.Reader, bn256.Order)
-	domainRecivers := contract.EmailBrdcastCT{utils.G1ToPoint(hdr.C0), utils.G1ToPoint(hdr.C1)}
-	proof := contract.EmailDomainProof{utils.G1ToPoint(senderSK.ScalarBaseMult(x)),
-		utils.G1ToPoint(&senderPK), utils.G1ToPoint(cpk.V.ScalarBaseMult(x))}
 	// todo Charlie sends domainPK to Bob via one-to-one mailing
 	//
 	//Bob encrypts a mail content and broadcast to the domain
@@ -121,8 +116,19 @@ func main() {
 	cid2, _ := sh.Add(strings.NewReader(ct))
 	fmt.Println("broadcast mail IPFS link:", cid2)
 	privatekey12 := utils.GetENV("PRIVATE_KEY_12")
+	x, _ := rand.Int(rand.Reader, bn256.Order)
+	x = big.NewInt(1)
+	domainRecivers := contract.EmailBrdcastCT{utils.G1ToPoint(hdr.C0), utils.G1ToPoint(hdr.C1)}
+	proof := contract.EmailDomainProof{utils.G1ToPoint(new(bn256.G1).ScalarMult(&senderSK, x)),
+		utils.G2ToPoint(&cpk.QArr[senderIndex]), utils.G1ToPoint(new(bn256.G1).ScalarMult(&cpk.V, x))}
+	//e(skipws,g2)= e(pki,vpows)
+	fmt.Println(bn256.Pair(new(bn256.G1).ScalarMult(&senderSK, x), &cpk.QArr[0]).String()[:32])
+	fmt.Println(bn256.Pair(new(bn256.G1).ScalarMult(&cpk.V, x), &cpk.QArr[senderIndex]).String()[:32])
 	para = []interface{}{"BrdcastTo", domainRecivers, proof, cid2, []string{"Alice", "Bob"}}
 	_ = utils.Transact(client, privatekey12, big.NewInt(0), ctc, para).(*types.Receipt)
+	pairingRes, _ := ctc.GetPairingRes(&bind.CallOpts{})
+	fmt.Printf("GetPairingRes used: %d\n", pairingRes)
+
 	decIndex := S[1]
 	beKp := secretKeys[decIndex].Decrypt(S, hdr, cpk)
 	sh.Get(cid2, "./alice/")
