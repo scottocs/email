@@ -29,7 +29,7 @@ func main() {
 	address, _ := utils.Deploy(client, contract_name, deployTX.(*bind.TransactOpts))
 	ctc, err := contract.NewContract(common.HexToAddress(address.Hex()), client)
 
-	fmt.Println("=============================upload personal public keys=====================")
+	fmt.Println("=============================register personal public keys=====================")
 	//Users register their public keys (A B)
 	names := []string{"Bob", "Alice", "Charlie", "Emily", "Alexander", "Sophia", "Benjamin", "Olivia", "James", "Peggy"}
 	users := make([]utils.User, len(names))
@@ -48,7 +48,6 @@ func main() {
 
 	Bob := users[0]
 	Alice := users[1]
-	//Charlie := users[2]
 	//Bob generates Alice's Stealth address after downloading Alice's public keys
 	fmt.Println("=============================test one-to-one mailing=====================")
 	m, _ := rand.Int(rand.Reader, bn256.Order)
@@ -57,48 +56,56 @@ func main() {
 	recs := []string{names[8], names[9]} //user names to confuse others
 	utils.MailTo(client, ctc, Bob, key, msg, Alice, recs)
 	//Alice downloads the encrypted email
-	utils.DownloadMail(ctc, Alice)
+	utils.ReadMail(ctc, Alice)
 
-	//	broadcast encryption
 	//Bob is a group administrator
 	n := len(users)
-	cpk, secretKeys := broadcast.Setup(n, "@group1")
+	groupName := "@group1"
+	brdPks, brdPrivs := broadcast.Setup(n, groupName)
 	Bobindex := 0
 	Bob = users[Bobindex]
-	Bob.BrdUser = &utils.DomainUser{utils.Group{cpk, secretKeys[Bobindex]}, nil, nil}
+	Bob.Brd = &utils.BrdDomain{utils.BrdGroup{brdPks, brdPrivs[Bobindex]}, nil}
 	fmt.Println("=============================upload broadcast public keys=====================")
-	//Bob sends secretKeys to each group member via one-to-one mailing (Here, sends secretkeys to the domain)
-	utils.RegisterGroup(client, ctc, Bob, cpk, secretKeys, users)
+	//Bob sends brdPrivs to each group member via one-to-one mailing (Here, sends secretkeys to the domain)
+	utils.RegisterGroup(client, ctc, Bob, brdPks, brdPrivs, users)
 
-	fmt.Println("=============================Alice Download broadcast public keys=====================")
-	//brdPriv := utils.DownloadAndResolvePriv(ctc, Alice, cpk.GroupName)
-
-	//
 	////Charlie is a domain manager, Charlie generates \prod_j∈S g_{n+1-j} for the domain
 	fmt.Println("=============================build domain public keys=====================")
 	size := n / 2
-	S := make([]int, size)
+	S := make([]uint32, size)
 	for i := 0; i < size; i++ {
-		S[i] = i + 1
+		S[i] = uint32(i) + 1
 	}
-	domainPK := cpk.BuildDomainPK(S)
-	Charlieindex := 2
-	Charlie := users[Charlieindex]
-	////TODO obtain from blockchain
-	Charlie.BrdUser = &utils.DomainUser{utils.Group{cpk, secretKeys[Bobindex]}, S, domainPK}
-	//senderSK := secretKeys[Charlieindex].Di
-	//// todo Charlie sends domainPK to Bob via one-to-one mailing
-	//Bob encrypts a mail content and broadcast to the domain
+	domainName := "computer" + groupName
+	Charlie := users[2]
+	fmt.Println(domainName)
+	utils.RegisterDomain(client, ctc, Charlie, domainName, S)
+
+	// Emily as a member, broadcast a email
+	fmt.Println("=============================broadcast email=====================")
+	Emily := users[3]
+	pArrEmily, qArrEmily, vEmily, _ := ctc.DownloadBrdPKs(&bind.CallOpts{}, groupName)
+	SEmily, _ := ctc.DownloadS(&bind.CallOpts{}, domainName)
+	fmt.Println(SEmily)
+	brdPksEmily := broadcast.CompletePublicKey{utils.PointsToG1(pArrEmily), utils.PointsToG2(qArrEmily), *utils.PointToG1(vEmily), groupName}
+	brdPrivEmily := utils.DownloadAndResolvePriv(ctc, Emily, groupName)
+	Emily.Brd = &utils.BrdDomain{utils.BrdGroup{brdPksEmily, brdPrivEmily}, SEmily}
 	msg = []byte("Dear Staff, we are going to have a meeting at Jun 30, 2024 09:00 at the gym. \nBest,\nDomain manager")
-	//cid := utils.MailTo(client, ctc, Bob, key, msg, Alice, recs)
-	cid2 := utils.BroadcastTo(client, ctc, Charlie, cpk, msg)
+	cid2 := utils.BroadcastTo(client, ctc, Emily, msg)
+
+	//Alice is a domain and ties to read the email
+	fmt.Println("=============================read broadcasted email=====================")
+	Alice = users[1]
+	groupNames, _ := ctc.GetMyGroups(&bind.CallOpts{}, Alice.Name)
+	for i := 0; i < len(groupNames); i++ {
+		pArrAlice, qArrAlice, vAlice, _ := ctc.DownloadBrdPKs(&bind.CallOpts{}, groupName)
+		brdPksAlice := broadcast.CompletePublicKey{utils.PointsToG1(pArrAlice), utils.PointsToG2(qArrAlice), *utils.PointToG1(vAlice), groupNames[i]}
+		brdPrivAlice := utils.DownloadAndResolvePriv(ctc, Alice, groupNames[i])
+		Alice.Brd = &utils.BrdDomain{utils.BrdGroup{brdPksAlice, brdPrivAlice}, S}
+		utils.ReadBrdMail(ctc, Alice, cid2)
+	}
+
 	//pairingRes, _ := ctc.GetPairingRes(&bind.CallOpts{})
 	//fmt.Printf("GetPairingRes: %v\n", pairingRes)
 	//
-	////todo Alice downloads mails and decrypt cid2,GroupName
-	//
-	brdPriv := utils.DownloadAndResolvePriv(ctc, Alice, cpk.GroupName)
-	Alice.BrdUser = &utils.DomainUser{utils.Group{cpk, brdPriv}, S, domainPK}
-	utils.DownloadBrdMail(ctc, Alice, cpk, brdPriv, cid2)
-
 }

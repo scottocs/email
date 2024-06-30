@@ -97,8 +97,12 @@ func Transact(client *ethclient.Client, privatekey string, value *big.Int, ctc *
 		f = ctc.BrdcastTo
 	case "RegisterGroup":
 		f = ctc.RegisterGroup
+	case "RegisterDomain":
+		f = ctc.RegisterDomain
 	case "DownloadBrdPrivs":
 		f = ctc.DownloadBrdPrivs
+		//case "SplitAt":
+		//	f = ctc.SplitAt
 	}
 
 	// 获取函数的反射值
@@ -273,7 +277,20 @@ func G2ToPoint(point *bn256.G2) contract.EmailG2Point {
 	}
 	return g2Point
 }
-
+func PointsToG1(points []contract.EmailG1Point) []bn256.G1 {
+	arr := make([]bn256.G1, len(points))
+	for i := 0; i < len(points); i++ {
+		arr[i] = *PointToG1(points[i])
+	}
+	return arr
+}
+func PointsToG2(points []contract.EmailG2Point) []bn256.G2 {
+	arr := make([]bn256.G2, len(points))
+	for i := 0; i < len(points); i++ {
+		arr[i] = *PointToG2(points[i])
+	}
+	return arr
+}
 func PointToG1(point contract.EmailG1Point) *bn256.G1 {
 	combinedByteArray := make([]byte, 64)
 	point.X.FillBytes(combinedByteArray[:32])
@@ -324,18 +341,7 @@ func MailTo(client *ethclient.Client, ctc *contract.Contract, sender User, key *
 	return cid
 }
 
-//func MailTo2(client *ethclient.Client, ctc *contract.Contract, from User, cid string, to User, recs []string) {
-//	pkRes, _ := ctc.DownloadPK(&bind.CallOpts{}, to.GroupName)
-//	sa := stealth.CalculatePub(stealth.PublicKey{PointToG1(pkRes.A), PointToG1(pkRes.B)})
-//	SA := contract.EmailStealthAddrPub{G1ToPoint(sa.R), G1ToPoint(sa.S)}
-//	ElCT := contract.EmailElGamalCT{G1ToPoint(new(bn256.G1)), G1ToPoint(new(bn256.G1))}
-//	cid = cid + "||1"
-//	para := []interface{}{"MailTo", SA, ElCT, cid, append(recs, to.GroupName)}
-//	//fmt.Println(para)
-//	_ = Transact(client, from.Privatekey, big.NewInt(0), ctc, para).(*types.Receipt)
-//}
-
-func DownloadMail(ctc *contract.Contract, my User) {
+func ReadMail(ctc *contract.Contract, my User) {
 	currentTime := time.Now()
 	timestamp := currentTime.Unix()
 	dayTS := timestamp - (timestamp % 86400)
@@ -361,6 +367,11 @@ func DownloadMail(ctc *contract.Contract, my User) {
 	}
 
 }
+func RegisterDomain(client *ethclient.Client, ctc *contract.Contract, from User, name string, S []uint32) {
+	para := []interface{}{"RegisterDomain", name, S}
+	_ = Transact(client, from.Privatekey, big.NewInt(0), ctc, para).(*types.Receipt)
+}
+
 func RegisterGroup(client *ethclient.Client, ctc *contract.Contract, from User, cpk broadcast.CompletePublicKey, privs []broadcast.AdvertiserSecretKey, to []User) {
 	c1 := make([]bn256.G1, len(privs))
 	c2 := make([]bn256.G1, len(privs))
@@ -384,7 +395,6 @@ func RegisterGroup(client *ethclient.Client, ctc *contract.Contract, from User, 
 func DownloadAndResolvePriv(ctc *contract.Contract, my User, groupname string) broadcast.AdvertiserSecretKey {
 	index, c1, c2, _ := ctc.DownloadBrdPrivs(&bind.CallOpts{}, groupname, my.Name)
 	c1pNeg := new(bn256.G1).Neg(PointToG1(c1))
-	//c2p :=
 	myBrdPriv := new(bn256.G1).Add(PointToG1(c2), new(bn256.G1).ScalarMult(c1pNeg, my.Aa))
 	//
 	//fmt.Printf("Secret key of broadcast email: %v %v\n", myBrdPriv.String(), index)
@@ -393,9 +403,10 @@ func DownloadAndResolvePriv(ctc *contract.Contract, my User, groupname string) b
 	}
 }
 
-func BroadcastTo(client *ethclient.Client, ctc *contract.Contract, sender User, cpk broadcast.CompletePublicKey, msg []byte) string {
+func BroadcastTo(client *ethclient.Client, ctc *contract.Contract, sender User, msg []byte) string {
 	// todo download cpk
-	hdr, beK := cpk.Encrypt(sender.BrdUser.DomainPK)
+	brdPKs := sender.Brd.Group.PKs
+	hdr, beK := brdPKs.Encrypt(sender.Brd.S)
 
 	ct, _ := aes.Encrypt(msg, beK.Marshal()[:32])
 	fmt.Println("encrypted email to broadcast:", ct)
@@ -404,17 +415,17 @@ func BroadcastTo(client *ethclient.Client, ctc *contract.Contract, sender User, 
 	fmt.Println("broadcast mail IPFS link:", cid2)
 	x, _ := rand.Int(rand.Reader, bn256.Order)
 	//x = big.NewInt(1)
-	senderIndex := sender.BrdUser.Group.SK.I
+	senderIndex := sender.Brd.Group.SK.I
 	domainRecivers := contract.EmailBrdcastHeader{G1ToPoint(hdr.C0), G1ToPoint(hdr.C1), G2ToPoint(hdr.C0p)}
-	proof := contract.EmailDomainProof{G1ToPoint(new(bn256.G1).ScalarMult(&sender.BrdUser.Group.SK.Di, x)),
-		G2ToPoint(&cpk.QArr[senderIndex]), G1ToPoint(new(bn256.G1).ScalarMult(&cpk.V, x))}
+	proof := contract.EmailDomainProof{G1ToPoint(new(bn256.G1).ScalarMult(&sender.Brd.Group.SK.Di, x)),
+		G2ToPoint(&brdPKs.QArr[senderIndex]), G1ToPoint(new(bn256.G1).ScalarMult(&brdPKs.V, x))}
 	//e(skipws,g2)= e(pki,vpows)
-	para := []interface{}{"BrdcastTo", domainRecivers, proof, cid2, []string{"Alice", "Bob"}}
+	para := []interface{}{"BrdcastTo", domainRecivers, proof, cid2}
 	_ = Transact(client, sender.Privatekey, big.NewInt(0), ctc, para).(*types.Receipt)
 	return cid2
 }
 
-func DownloadBrdMail(ctc *contract.Contract, my User, cpk broadcast.CompletePublicKey, brdPriv broadcast.AdvertiserSecretKey, cid string) {
+func ReadBrdMail(ctc *contract.Contract, my User, cid string) {
 	//contract.EmailBrdcastCT{G1ToPoint(hdr.C0), G1ToPoint(hdr.C1)}
 	brdHdr, _ := ctc.DownloadBrdCT(&bind.CallOpts{}, cid)
 	hdr := broadcast.Header{
@@ -422,7 +433,7 @@ func DownloadBrdMail(ctc *contract.Contract, my User, cpk broadcast.CompletePubl
 		PointToG2(brdHdr.C0p),
 		PointToG1(brdHdr.C1),
 	}
-	beKp := brdPriv.Decrypt(my.BrdUser.S, hdr, cpk)
+	beKp := my.Brd.Group.SK.Decrypt(my.Brd.S, hdr, my.Brd.Group.PKs)
 	GetIPFSClient().Get(cid, "./"+my.Name+"/")
 	file, _ := os.Open("./" + my.Name + "/" + cid)
 	content, _ := io.ReadAll(file)

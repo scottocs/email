@@ -163,16 +163,17 @@ func Setup(n int, name string) (CompletePublicKey, []AdvertiserSecretKey) {
 	}, privateKeys
 }
 
-func (cpk *CompletePublicKey) BuildDomainPK(S []int) *bn256.G1 {
+func (cpk *CompletePublicKey) buildDomainPK(S []uint32) *bn256.G1 {
 	n := len(cpk.QArr) - 1
 	pk := new(bn256.G1).ScalarBaseMult(big.NewInt(0))
 	for _, j := range S {
-		pk = pk.Add(pk, &cpk.PArr[n+1-j])
+		pk = pk.Add(pk, &cpk.PArr[n+1-int(j)])
 	}
 	//fmt.Println(pk)
 	return pk
 }
-func (cpk *CompletePublicKey) Encrypt(domainPK *bn256.G1) (Header, *bn256.GT) {
+func (cpk *CompletePublicKey) Encrypt(S []uint32) (Header, *bn256.GT) {
+	domainPK := cpk.buildDomainPK(S)
 	t, _ := rand.Int(rand.Reader, bn256.Order)
 	//t = big.NewInt(2) //
 	n := len(cpk.QArr) - 1
@@ -189,7 +190,7 @@ func (cpk *CompletePublicKey) Encrypt(domainPK *bn256.G1) (Header, *bn256.GT) {
 	return hdr, K
 }
 
-func (adsk *AdvertiserSecretKey) Decrypt(S []int, hdr Header, cpk CompletePublicKey) *bn256.GT {
+func (adsk *AdvertiserSecretKey) Decrypt(S []uint32, hdr Header, cpk CompletePublicKey) *bn256.GT {
 	i := adsk.I
 	if i == 0 {
 		fmt.Println("Error: index 0 cannot be used")
@@ -198,8 +199,8 @@ func (adsk *AdvertiserSecretKey) Decrypt(S []int, hdr Header, cpk CompletePublic
 	numerator := bn256.Pair(hdr.C1, &cpk.QArr[i])
 	val := &adsk.Di
 	for _, j := range S {
-		if j != i {
-			val = val.Add(val, &cpk.PArr[n+1-j+i])
+		if int(j) != i {
+			val = val.Add(val, &cpk.PArr[n+1-int(j)+i])
 		}
 	}
 	denominator := new(bn256.GT).Neg(bn256.Pair(val, hdr.C0p))
