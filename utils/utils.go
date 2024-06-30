@@ -4,26 +4,32 @@ package utils
 import (
 	"context"
 	"crypto/ecdsa"
+	"crypto/rand"
 	"email/compile/contract"
+	"email/crypto/aes"
+	"email/crypto/broadcast"
+	"email/crypto/stealth"
 	"encoding/hex"
 	"fmt"
-	"github.com/fentec-project/bn256"
-	"github.com/tyler-smith/go-bip32"
-	"golang.org/x/crypto/sha3"
-	"log"
-	"math/big"
-	"os"
-	"reflect"
-	"strconv"
-	"strings"
-
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/fentec-project/bn256"
+	shell "github.com/ipfs/go-ipfs-api"
 	"github.com/joho/godotenv"
+	"github.com/tyler-smith/go-bip32"
+	"golang.org/x/crypto/sha3"
+	"io"
+	"log"
+	"math/big"
+	"os"
+	"reflect"
+	"strconv"
+	"strings"
+	"time"
 )
 
 // deploy contract and obtain abi interface and bin of source code
@@ -48,8 +54,10 @@ func Deploy(client *ethclient.Client, contract_name string, auth *bind.TransactO
 	if err != nil {
 		log.Fatalf("Failed to deploy contract: %v", err)
 	}
-	fmt.Printf("Basics.sol deployed! Address: %s\n", address.Hex())
-	fmt.Printf("Transaction hash: %s\n", tx.Hash().Hex())
+
+	receipt, _ := bind.WaitMined(context.Background(), client, tx)
+	fmt.Printf("Basics.sol deployed! Address: %s Gas used: %d\n", address.Hex(), receipt.GasUsed)
+	//fmt.Printf("Transaction hash: %s\n", tx.Hash().Hex())
 	return address, tx
 }
 
@@ -79,14 +87,18 @@ func Transact(client *ethclient.Client, privatekey string, value *big.Int, ctc *
 	}
 	//fmt.Println(args)
 	switch para[0] {
-	case "HashToG1":
-		f = ctc.HashToG1
-	case "UploadPK":
-		f = ctc.UploadPK
+	//case "HashToG1":
+	//	f = ctc.HashToG1
+	case "Register":
+		f = ctc.Register
 	case "MailTo":
 		f = ctc.MailTo
 	case "BrdcastTo":
 		f = ctc.BrdcastTo
+	case "RegisterGroup":
+		f = ctc.RegisterGroup
+	case "DownloadBrdPrivs":
+		f = ctc.DownloadBrdPrivs
 	}
 
 	// 获取函数的反射值
@@ -183,50 +195,53 @@ func GetAddr(privatekey string) common.Address {
 	return senderAddr
 }
 
-func InitBIP32Wallet(client *ethclient.Client, privatekey1 string) {
-
-	envMap, _ := godotenv.Read(".env")
-
-	ether := big.NewInt(1000000000000000000)
-
-	bts, _ := hex.DecodeString(GetENV("MASTER_KEY"))
-	msk, _ := bip32.Deserialize(bts)
-	mskStr := ""
-	if msk != nil {
-		mskStr = hex.EncodeToString(msk.Key)
+func InitBIP32Wallet(client *ethclient.Client, users []User) {
+	for j := 0; j < len(users); j++ {
+		envMap, _ := godotenv.Read(".env")
+		ether := big.NewInt(1000000000000000000)
+		bts, _ := hex.DecodeString(GetENV("MASTER_KEY_" + users[j].Name))
+		msk, _ := bip32.Deserialize(bts)
+		mskStr := hex.EncodeToString(msk.Key)
 		masterBalance, _ := client.BalanceAt(context.Background(), GetAddr(mskStr), nil)
 		if masterBalance.Cmp(big.NewInt(1).Mul(ether, big.NewInt(100))) > 0 {
 			fmt.Printf("masterBalance: %s ether\n", masterBalance.Div(masterBalance, ether))
 			return
 		}
-	} else {
 		seed, _ := bip32.NewSeed()
 		msk, _ = bip32.NewMasterKey(seed)
 		mskStr = hex.EncodeToString(msk.Key)
 		s, _ := msk.Serialize()
-		envMap["MASTER_KEY"] = hex.EncodeToString(s)
-	}
-	fmt.Println("mskStr", mskStr)
-	//envMap["PRIVATE_KEY_100"] = mskStr
+		envMap["MASTER_KEY_"+users[j].Name] = hex.EncodeToString(s)
 
-	recipt := TransactValue(client, privatekey1, GetAddr(mskStr), big.NewInt(1).Mul(big.NewInt(1000), ether)) //1000ETH
-	fmt.Println("TransactValue recipt gas used:", recipt.GasUsed)
-	chdKeys := map[int]*bip32.Key{}
-	for i := 1; i <= 10; i++ {
-		chdKeys[i], _ = msk.NewChildKey(uint32(i))
-		childKeyStr := hex.EncodeToString(chdKeys[i].Key)
-		TransactValue(client, privatekey1, GetAddr(childKeyStr), big.NewInt(1).Mul(big.NewInt(1000), ether)) //1000ETH
-		envMap["PRIVATE_KEY_"+strconv.Itoa(i+10)] = childKeyStr
-		//bal, _ := client.BalanceAt(context.Background(), GetAddr(childKeyStr), nil)
-		//fmt.Printf("%dthmasterBalance: %s ether\n", i+10, bal.Div(bal, ether))
-	}
-	//senderBalance, _ := client.BalanceAt(context.Background(), GetAddr(privatekey1), nil)
-	//fmt.Printf("senderBalance: %s ether\n", senderBalance.Div(senderBalance, ether))
-	godotenv.Write(envMap, ".env")
+		recipt := TransactValue(client, users[j].Privatekey, GetAddr(mskStr), big.NewInt(1).Mul(big.NewInt(1000), ether)) //1000ETH
+		if j == 0 {
+			fmt.Println("TransactValue recipt gas used:", recipt.GasUsed)
+		}
 
-	//"e5c2c2a3f5b7aa82c790d131b209443befd377c84d490f2cf4d5ed408f008ae0"
-	//addressBytes, _ := hex.DecodeString("41A5BC8ecbFad34e14af34C5E690A5355C861fA6")
-	//common.BytesToAddress(addressBytes)
+		chdKeys := map[int]*bip32.Key{}
+		for i := 1; i < 4; i++ {
+			chdKeys[i], _ = msk.NewChildKey(uint32(i))
+			childKeyStr := hex.EncodeToString(chdKeys[i].Key)
+			TransactValue(client, users[j].Privatekey, GetAddr(childKeyStr), big.NewInt(1).Mul(big.NewInt(1000), ether)) //1000ETH
+			envMap[users[j].Name+"_"+strconv.Itoa(i)] = childKeyStr
+		}
+		godotenv.Write(envMap, ".env")
+	}
+
+}
+func G1ArrToPoints(points []bn256.G1) []contract.EmailG1Point {
+	arr := make([]contract.EmailG1Point, len(points))
+	for i := 0; i < len(points); i++ {
+		arr[i] = G1ToPoint(&points[i])
+	}
+	return arr
+}
+func G2ArrToPoints(points []bn256.G2) []contract.EmailG2Point {
+	arr := make([]contract.EmailG2Point, len(points))
+	for i := 0; i < len(points); i++ {
+		arr[i] = G2ToPoint(&points[i])
+	}
+	return arr
 }
 func G1ToPoint(point *bn256.G1) contract.EmailG1Point {
 	// Marshal the G1 point to get the X and Y coordinates as bytes
@@ -260,10 +275,6 @@ func G2ToPoint(point *bn256.G2) contract.EmailG2Point {
 }
 
 func PointToG1(point contract.EmailG1Point) *bn256.G1 {
-	// Marshal the G1 point to get the X and Y coordinates as bytes
-	//new(bn256.G1).Un
-	//func (e *GT) Unmarshal(m []byte) ([]byte, error) {
-	//pointBytes := point.Marshal()
 	combinedByteArray := make([]byte, 64)
 	point.X.FillBytes(combinedByteArray[:32])
 	point.Y.FillBytes(combinedByteArray[32:])
@@ -272,4 +283,149 @@ func PointToG1(point contract.EmailG1Point) *bn256.G1 {
 	g1.Unmarshal(combinedByteArray)
 	return g1
 
+}
+func PointToG2(point contract.EmailG2Point) *bn256.G2 {
+	combinedByteArray := make([]byte, 128)
+	point.X[0].FillBytes(combinedByteArray[:32])
+	point.X[1].FillBytes(combinedByteArray[32:64])
+	point.Y[0].FillBytes(combinedByteArray[64:96])
+	point.Y[1].FillBytes(combinedByteArray[96:128])
+	g2 := new(bn256.G2)
+	g2.Unmarshal(combinedByteArray)
+	return g2
+
+}
+
+var ipfs *shell.Shell
+
+func GetIPFSClient() *shell.Shell {
+	if ipfs == nil {
+		ipfs = shell.NewShell("localhost:5001")
+	}
+	return ipfs
+}
+func IPFSUpload(msg string) string {
+	sh := GetIPFSClient()
+	cid, _ := sh.Add(strings.NewReader(msg))
+	fmt.Println("Mail IPFS link:", cid)
+	return cid
+}
+func MailTo(client *ethclient.Client, ctc *contract.Contract, sender User, key *bn256.G1, msg []byte, to User, recs []string) string {
+	pkRes, _ := ctc.DownloadPK(&bind.CallOpts{}, to.Name)
+	sa := stealth.CalculatePub(stealth.PublicKey{PointToG1(pkRes.A), PointToG1(pkRes.B)})
+	r, _ := rand.Int(rand.Reader, bn256.Order)
+	c1 := new(bn256.G1).ScalarBaseMult(r) // c1 = r * G
+	c2 := new(bn256.G1).Add(new(bn256.G1).ScalarMult(sa.S, r), key)
+	ct, _ := aes.Encrypt(msg, key.Marshal()[:32])
+	cid := IPFSUpload(ct) + "||0"
+	para := []interface{}{"MailTo", contract.EmailStealthAddrPub{G1ToPoint(sa.R), G1ToPoint(sa.S)}, contract.EmailElGamalCT{G1ToPoint(c1), G1ToPoint(c2)}, cid, append(recs, to.Name)}
+	_ = Transact(client, sender.Privatekey, big.NewInt(0), ctc, para).(*types.Receipt)
+
+	return cid
+}
+
+//func MailTo2(client *ethclient.Client, ctc *contract.Contract, from User, cid string, to User, recs []string) {
+//	pkRes, _ := ctc.DownloadPK(&bind.CallOpts{}, to.GroupName)
+//	sa := stealth.CalculatePub(stealth.PublicKey{PointToG1(pkRes.A), PointToG1(pkRes.B)})
+//	SA := contract.EmailStealthAddrPub{G1ToPoint(sa.R), G1ToPoint(sa.S)}
+//	ElCT := contract.EmailElGamalCT{G1ToPoint(new(bn256.G1)), G1ToPoint(new(bn256.G1))}
+//	cid = cid + "||1"
+//	para := []interface{}{"MailTo", SA, ElCT, cid, append(recs, to.GroupName)}
+//	//fmt.Println(para)
+//	_ = Transact(client, from.Privatekey, big.NewInt(0), ctc, para).(*types.Receipt)
+//}
+
+func DownloadMail(ctc *contract.Contract, my User) {
+	currentTime := time.Now()
+	timestamp := currentTime.Unix()
+	dayTS := timestamp - (timestamp % 86400)
+
+	cids, dayMails, _ := ctc.DownloadMail(&bind.CallOpts{}, my.Name, uint64(dayTS))
+	//fmt.Println(uint64(dayTS), dayMails)
+	for i := 0; i < len(cids); i++ {
+		sp := stealth.ResolvePriv(stealth.SecretKey{my.Aa, my.Bb},
+			stealth.StealthAddrPub{PointToG1(dayMails[i].Pub.R), PointToG1(dayMails[i].Pub.S)})
+		cid2Flag := strings.Split(cids[i], "||")
+		fmt.Println(cid2Flag)
+		GetIPFSClient().Get(cid2Flag[0], "./"+my.Name+"/")
+		file, _ := os.Open("./" + my.Name + "/" + cid2Flag[0])
+		content, _ := io.ReadAll(file)
+		decRes := string(content)
+		if cid2Flag[1] == "0" {
+			c1pNeg := new(bn256.G1).Neg(PointToG1(dayMails[i].Ct.C1))
+			c2p := PointToG1(dayMails[i].Ct.C2)
+			keyp := new(bn256.G1).Add(c2p, new(bn256.G1).ScalarMult(c1pNeg, sp))
+			decRes, _ = aes.Decrypt(decRes, keyp.Marshal()[:32])
+		}
+		fmt.Println("Email content:", decRes)
+	}
+
+}
+func RegisterGroup(client *ethclient.Client, ctc *contract.Contract, from User, cpk broadcast.CompletePublicKey, privs []broadcast.AdvertiserSecretKey, to []User) {
+	c1 := make([]bn256.G1, len(privs))
+	c2 := make([]bn256.G1, len(privs))
+	names := make([]string, len(privs))
+	for i := 0; i < len(to); i++ {
+		pkRes, _ := ctc.DownloadPK(&bind.CallOpts{}, to[i].Name)
+		//sa := stealth.CalculatePub(stealth.PublicKey{PointToG1(pkRes.A), PointToG1(pkRes.B)})
+		r, _ := rand.Int(rand.Reader, bn256.Order)
+		c1[i] = *new(bn256.G1).ScalarBaseMult(r)
+		// todo whether a stealth address is needed?
+		c2[i] = *new(bn256.G1).Add(new(bn256.G1).ScalarMult(PointToG1(pkRes.A), r), &privs[i+1].Di)
+		//fmt.Println(c1[i].String())
+		names[i] = to[i].Name
+	}
+
+	//fmt.Println(len(cpk.PArr), len(cpk.QArr), len(to)) //2n+1,n+1,n
+	para := []interface{}{"RegisterGroup", cpk.GroupName, G1ArrToPoints(cpk.PArr), G2ArrToPoints(cpk.QArr),
+		G1ToPoint(&cpk.V), G1ArrToPoints(c1), G1ArrToPoints(c2), names}
+	_ = Transact(client, from.Privatekey, big.NewInt(0), ctc, para).(*types.Receipt)
+}
+func DownloadAndResolvePriv(ctc *contract.Contract, my User, groupname string) broadcast.AdvertiserSecretKey {
+	index, c1, c2, _ := ctc.DownloadBrdPrivs(&bind.CallOpts{}, groupname, my.Name)
+	c1pNeg := new(bn256.G1).Neg(PointToG1(c1))
+	//c2p :=
+	myBrdPriv := new(bn256.G1).Add(PointToG1(c2), new(bn256.G1).ScalarMult(c1pNeg, my.Aa))
+	//
+	//fmt.Printf("Secret key of broadcast email: %v %v\n", myBrdPriv.String(), index)
+	return broadcast.AdvertiserSecretKey{
+		int(index.Int64()) + 1, *myBrdPriv,
+	}
+}
+
+func BroadcastTo(client *ethclient.Client, ctc *contract.Contract, sender User, cpk broadcast.CompletePublicKey, msg []byte) string {
+	// todo download cpk
+	hdr, beK := cpk.Encrypt(sender.BrdUser.DomainPK)
+
+	ct, _ := aes.Encrypt(msg, beK.Marshal()[:32])
+	fmt.Println("encrypted email to broadcast:", ct)
+	// Bob uploads encrypted email content to IPFS
+	cid2, _ := GetIPFSClient().Add(strings.NewReader(ct))
+	fmt.Println("broadcast mail IPFS link:", cid2)
+	x, _ := rand.Int(rand.Reader, bn256.Order)
+	//x = big.NewInt(1)
+	senderIndex := sender.BrdUser.Group.SK.I
+	domainRecivers := contract.EmailBrdcastHeader{G1ToPoint(hdr.C0), G1ToPoint(hdr.C1), G2ToPoint(hdr.C0p)}
+	proof := contract.EmailDomainProof{G1ToPoint(new(bn256.G1).ScalarMult(&sender.BrdUser.Group.SK.Di, x)),
+		G2ToPoint(&cpk.QArr[senderIndex]), G1ToPoint(new(bn256.G1).ScalarMult(&cpk.V, x))}
+	//e(skipws,g2)= e(pki,vpows)
+	para := []interface{}{"BrdcastTo", domainRecivers, proof, cid2, []string{"Alice", "Bob"}}
+	_ = Transact(client, sender.Privatekey, big.NewInt(0), ctc, para).(*types.Receipt)
+	return cid2
+}
+
+func DownloadBrdMail(ctc *contract.Contract, my User, cpk broadcast.CompletePublicKey, brdPriv broadcast.AdvertiserSecretKey, cid string) {
+	//contract.EmailBrdcastCT{G1ToPoint(hdr.C0), G1ToPoint(hdr.C1)}
+	brdHdr, _ := ctc.DownloadBrdCT(&bind.CallOpts{}, cid)
+	hdr := broadcast.Header{
+		PointToG1(brdHdr.C0),
+		PointToG2(brdHdr.C0p),
+		PointToG1(brdHdr.C1),
+	}
+	beKp := brdPriv.Decrypt(my.BrdUser.S, hdr, cpk)
+	GetIPFSClient().Get(cid, "./"+my.Name+"/")
+	file, _ := os.Open("./" + my.Name + "/" + cid)
+	content, _ := io.ReadAll(file)
+	decRes, _ := aes.Decrypt(string(content), beKp.Marshal()[:32])
+	fmt.Println("Broadcast Email content:", decRes)
 }

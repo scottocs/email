@@ -53,7 +53,7 @@ func ResolvePriv(priv SecretKey, stealth StealthAddrPub) *big.Int {
 	Sp := new(bn256.G1).ScalarBaseMult(s)
 
 	if stealth.S.String() != Sp.String() {
-		fmt.Println("S is wrong, no secret is geneated")
+		fmt.Println("stealth address is wrong, no secret is generated")
 		return nil
 	}
 	return s

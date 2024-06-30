@@ -183,8 +183,12 @@ contract Email {
 		return keccak256(a) == keccak256(b);
 	}
 	mapping(string => PK) public name2PK;
-	mapping(string => MailRev) public cid2Mails;
+	mapping(string => uint64) public name2Day;
+	mapping(string => mapping(uint64 => string[])) public name2Day2Cid;
+	mapping(string => MailRev) public cid2Mail;
 	mapping(string => BrdcastMailRev) public cid2BrdcastMails;
+	mapping(string => GroupParams) public groupInfo;
+	mapping(string => string[] ) public name2Groupnames;
 	bool public pairingRes;
 
 	struct PK {
@@ -195,9 +199,18 @@ contract Email {
 		G1Point R;
 		G1Point S;
 	}
-	struct BrdcastCT{
+	struct GroupParams {
+		G1Point[] pArr;
+		G2Point[] qArr;
+		G1Point v;
+		G1Point[] privC1;
+		G1Point[] privC2;
+		string[] names;
+	}
+	struct BrdcastHeader {
 		G1Point C0;
 		G1Point C1;
+		G2Point C0p;
 	}
 	struct ElGamalCT{
 		G1Point C1;
@@ -211,17 +224,16 @@ contract Email {
 	struct MailRev{
 		StealthAddrPub pub;		
 		ElGamalCT ct;
-		string[] names;
 	}
 
 	struct BrdcastMailRev{
-		BrdcastCT ct;
+		BrdcastHeader ct;
 		DomainProof proof;
-		string[] names;
+//		string[] names;
 	}
 
-	function uploadPK(string memory name, PK memory pk) public payable returns (PK memory)  {
-		require(name2PK[name].A.X == 0, "name does not exist.");
+	function register(string memory name, PK memory pk) public payable returns (PK memory)  {
+		require(name2PK[name].A.X == 0, "name exists.");
 
 		if (name2PK[name].A.X == 0) {
 			name2PK[name] = pk;
@@ -231,28 +243,100 @@ contract Email {
 	function downloadPK(string memory name) public view returns (PK memory) {
 		return name2PK[name];
 	}
+//	uint64 today;
+	function mailTo(StealthAddrPub memory saPub, ElGamalCT memory ct, string memory cid, string[] memory names) public payable {
+		cid2Mail[cid]=MailRev(saPub, ct);
+		uint64 currentTime = uint64(block.timestamp);
+		uint64 day = currentTime - (currentTime % 86400);
 
-	function mailTo(StealthAddrPub memory saPub, ElGamalCT memory ct, string memory cid, string[] memory names) public payable  {
-		cid2Mails[cid] = MailRev(saPub, ct, names);
-		//TODO	emit event
+		for (uint i = 0; i < names.length; i++) {
+			name2Day2Cid[names[i]][day].push(cid);
+		}
+//		today = day;
+	}
+	function registerGroup(string memory groupName, G1Point[] memory pArr, G2Point[] memory qArr, G1Point memory v,G1Point[] memory privC1, G1Point[] memory privC2, string[] memory names) public payable {
+//		GroupParams storage group = ;
+		groupInfo[groupName].v=G1Point(v.X,v.Y);
+		for (uint i = 0; i < qArr.length; i++) {//n+1
+			groupInfo[groupName].qArr.push(G2Point(qArr[i].X,qArr[i].Y));
+		}
+		for (uint i = 0; i < pArr.length; i++) {//2n+1
+			groupInfo[groupName].pArr.push(G1Point(pArr[i].X,pArr[i].Y));
+		}
+		for (uint i = 0; i < privC1.length; i++) {//n
+			groupInfo[groupName].privC1.push(G1Point(privC1[i].X,privC1[i].Y));
+			groupInfo[groupName].privC2.push(G1Point(privC2[i].X,privC2[i].Y));
+			groupInfo[groupName].names.push(names[i]);
+			name2Groupnames[names[i]].push(groupName);
+		}
+//		groupInfo[groupName]=GroupParams(PArr,QArr,V,c1,c2,Names);
 	}
 
-	function brdcastTo(BrdcastCT memory ct, DomainProof memory proof, string memory cid, string[] memory names) public payable  {
-		cid2BrdcastMails[cid] = BrdcastMailRev(ct, proof, names);
+	function DownloadBrdPrivs(string memory groupName,string memory name) public view returns (uint, G1Point memory,G1Point memory) {
+		G1Point memory c1;
+		G1Point memory c2;
+		uint index;
+//		return groupInfo[groupName].names.length;
+		for (uint i = 0; i < groupInfo[groupName].privC1.length; i++) {
+			string memory nameBC = groupInfo[groupName].names[i];
+			if(keccak256(abi.encodePacked(nameBC)) == keccak256(abi.encodePacked(name))){
+				c1=groupInfo[groupName].privC1[i];
+				c2=groupInfo[groupName].privC2[i];
+				index=i;
+				break;
+			}
+		}
+		return (index,c1, c2);
+	}
+
+	function brdcastTo(BrdcastHeader memory hdr, DomainProof memory proof, string memory cid, string[] memory names) public payable returns (bool)  {
+//		todo cid as key?
 		G1Point[] memory p1Arr = new G1Point[](2);
 		G2Point[] memory p2Arr = new G2Point[](2);
 		p1Arr[0] = negate(proof.skipows);
 		p1Arr[1] = proof.vpows;
 		p2Arr[0] = G2;
 		p2Arr[1] = proof.pki;
-		pairingRes=pairing(p1Arr, p2Arr);
+
+		if(pairing(p1Arr, p2Arr)) {
+			cid2BrdcastMails[cid] = BrdcastMailRev(hdr, proof);
+//			pairingRes= true;//cost ~20000 gas
+			return true;
+		}else{
+			return false;
+		}
 		//TODO	emit event
 	}
+	function downloadBrdCT(string memory cid) public view returns (BrdcastHeader memory) {
+		return cid2BrdcastMails[cid].ct;
+	}
+
 	function getPairingRes() public view returns (bool) {
 		return pairingRes;
 	}
 
-	function downloadMail(string memory cid) public view returns (MailRev memory) {
-		return cid2Mails[cid];
+	function downloadMail(string memory name, uint64 day) public view returns (string[] memory, MailRev[] memory) {
+		string[] memory cids = name2Day2Cid[name][day];
+		MailRev[] memory mails = new MailRev[](cids.length);
+		for (uint i = 0; i < cids.length; i++) {
+			mails[i]=cid2Mail[cids[i]];
+		}
+		return (cids, mails);
 	}
+
+//
+//	function registerGroup(string memory name, PK[] memory pks) public payable returns (PK memory)  {
+//		require(group2PKs[name].length == 0, "group exists.");
+//
+//		if (group2PKs[name].length == 0) {
+//			for (uint i = 0; i < pks.length; i++) {
+//				group2PKs[name].push(pks[i]);
+//			}
+//
+//		}
+//		return group2PKs[name][0];
+//	}
+
+
+
 }

@@ -2,15 +2,107 @@ package broadcast
 
 import (
 	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"github.com/fentec-project/bn256"
 	"math/big"
 )
 
 type CompletePublicKey struct {
-	PArr []bn256.G1
-	QArr []bn256.G2
-	V    bn256.G1
+	PArr      []bn256.G1 `json:"g1"`
+	QArr      []bn256.G2 `json:"g2"`
+	V         bn256.G1   `json:"v"`
+	GroupName string     `json:"name"`
+}
+
+func (c *CompletePublicKey) MarshalJSON() ([]byte, error) {
+	pArr := make([]string, len(c.PArr))
+	for i, p := range c.PArr {
+		pArr[i] = fmt.Sprintf("%x", p.Marshal())
+	}
+
+	qArr := make([]string, len(c.QArr))
+	for i, q := range c.QArr {
+		qArr[i] = fmt.Sprintf("%x", q.Marshal())
+	}
+
+	v := fmt.Sprintf("%x", c.V.Marshal())
+
+	return json.Marshal(&struct {
+		G1   []string `json:"g1"`
+		G2   []string `json:"g2"`
+		V    string   `json:"v"`
+		Name string   `json:"name"`
+	}{
+		G1:   pArr,
+		G2:   qArr,
+		V:    v,
+		Name: c.GroupName,
+	})
+}
+
+func (c *CompletePublicKey) UnmarshalJSON(data []byte) error {
+	var aux struct {
+		G1   []string `json:"g1"`
+		G2   []string `json:"g2"`
+		V    string   `json:"v"`
+		Name string   `json:"name"`
+	}
+
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+
+	c.PArr = make([]bn256.G1, len(aux.G1))
+	for i, pStr := range aux.G1 {
+		pBytes, err := hex.DecodeString(pStr)
+		if err != nil {
+			return err
+		}
+		_, err = c.PArr[i].Unmarshal(pBytes)
+		if err != nil {
+			return err
+		}
+	}
+
+	c.QArr = make([]bn256.G2, len(aux.G2))
+	for i, qStr := range aux.G2 {
+		qBytes, err := hex.DecodeString(qStr)
+		if err != nil {
+			return err
+		}
+		_, err = c.QArr[i].Unmarshal(qBytes)
+		if err != nil {
+			return err
+		}
+	}
+
+	vBytes, err := hex.DecodeString(aux.V)
+	if err != nil {
+		return err
+	}
+	_, err = c.V.Unmarshal(vBytes)
+	if err != nil {
+		return err
+	}
+
+	c.GroupName = aux.Name
+
+	return nil
+}
+func (pk *CompletePublicKey) String() string {
+	//fmt.Println(pk.PArr[0].String())
+	//fmt.Println(pk.QArr[0].String())
+	jsonData, _ := json.Marshal(pk)
+	return string(jsonData)
+}
+
+func JSON2CompletePublicKey(cpkStr string) CompletePublicKey {
+	var newPk CompletePublicKey
+	_ = json.Unmarshal(([]byte)(cpkStr), &newPk)
+	//fmt.Println("反序列化成功", newPk.QArr[1].String())
+	return newPk
 }
 
 type Header struct {
@@ -20,11 +112,11 @@ type Header struct {
 }
 
 type AdvertiserSecretKey struct {
-	i  int
+	I  int
 	Di bn256.G1
 }
 
-func Setup(n int) (CompletePublicKey, []AdvertiserSecretKey) {
+func Setup(n int, name string) (CompletePublicKey, []AdvertiserSecretKey) {
 	r := rand.Reader
 	//_, P, _ := bn256.RandomG1(r)
 	//_, Q, _ := bn256.RandomG2(r)
@@ -43,12 +135,12 @@ func Setup(n int) (CompletePublicKey, []AdvertiserSecretKey) {
 		if i == n+1 {
 			PArr[i] = *new(bn256.G1).ScalarBaseMult(big.NewInt(0))
 		}
-		//fmt.Println(i, PArr[i].String())
+		//fmt.Println(I, PArr[I].String())
 	}
 	for i := 1; i < n+1; i++ {
 		accumulatorQ = accumulatorQ.ScalarMult(accumulatorQ, alpha)
 		QArr[i] = *new(bn256.G2).Set(accumulatorQ)
-		//fmt.Println(i, QArr[i].String())
+		//fmt.Println(I, QArr[I].String())
 	}
 
 	gamma, _ := rand.Int(r, bn256.Order)
@@ -58,15 +150,16 @@ func Setup(n int) (CompletePublicKey, []AdvertiserSecretKey) {
 	privateKeys := make([]AdvertiserSecretKey, n+1)
 	for i := 0; i < n+1; i++ {
 		privateKeys[i] = AdvertiserSecretKey{
-			i:  i,
+			I:  i,
 			Di: *new(bn256.G1).ScalarMult(&PArr[i], gamma),
 		}
 	}
 
 	return CompletePublicKey{
-		PArr: PArr,
-		QArr: QArr,
-		V:    *V,
+		PArr:      PArr,
+		QArr:      QArr,
+		V:         *V,
+		GroupName: name,
 	}, privateKeys
 }
 
@@ -97,7 +190,7 @@ func (cpk *CompletePublicKey) Encrypt(domainPK *bn256.G1) (Header, *bn256.GT) {
 }
 
 func (adsk *AdvertiserSecretKey) Decrypt(S []int, hdr Header, cpk CompletePublicKey) *bn256.GT {
-	i := adsk.i
+	i := adsk.I
 	if i == 0 {
 		fmt.Println("Error: index 0 cannot be used")
 	}

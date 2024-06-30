@@ -3,9 +3,7 @@ package main
 import (
 	"crypto/rand"
 	"email/compile/contract"
-	"email/crypto/aes"
 	"email/crypto/broadcast"
-	"email/crypto/stealth"
 	"email/utils"
 	"fmt"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -13,12 +11,9 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/fentec-project/bn256"
-	shell "github.com/ipfs/go-ipfs-api"
-	"io"
 	"log"
 	"math/big"
-	"os"
-	"strings"
+	"strconv"
 )
 
 func main() {
@@ -29,112 +24,81 @@ func main() {
 		log.Fatalf("Failed to connect to the Ethereum client: %v", err)
 	}
 
-	//Bob's
-	privatekey1 := utils.GetENV("PRIVATE_KEY_1")
-	//Alice's
-	privatekey2 := utils.GetENV("PRIVATE_KEY_2")
-	deployTX := utils.Transact(client, privatekey1, big.NewInt(0), nil, nil)
+	//Deploy
+	deployTX := utils.Transact(client, utils.GetENV("PRIVATE_KEY_1"), big.NewInt(0), nil, nil)
 	address, _ := utils.Deploy(client, contract_name, deployTX.(*bind.TransactOpts))
 	ctc, err := contract.NewContract(common.HexToAddress(address.Hex()), client)
 
-	//Alice uploads her public keys (A B)
-	ska, _ := rand.Int(rand.Reader, bn256.Order)
-	skb, _ := rand.Int(rand.Reader, bn256.Order)
-	A := new(bn256.G1).ScalarBaseMult(ska)
-	B := new(bn256.G1).ScalarBaseMult(skb)
-	//fmt.Println("Alice", ska)
-	para := []interface{}{"UploadPK", "Alice", contract.EmailPK{utils.G1ToPoint(A), utils.G1ToPoint(B)}}
-	_ = utils.Transact(client, privatekey2, big.NewInt(0), ctc, para).(*types.Receipt)
-	//fmt.Printf("%v Gas used: %d\n", para[0], receipt.GasUsed)
-
-	//Bob generates Alice's Stealth address after downloading Alice's public keys
-	pkRes, _ := ctc.DownloadPK(&bind.CallOpts{}, "Alice")
-	Ap := utils.PointToG1(pkRes.A)
-	Bp := utils.PointToG1(pkRes.B)
-	if A.String() != Ap.String() || B.String() != Bp.String() {
-		return
+	fmt.Println("=============================upload personal public keys=====================")
+	//Users register their public keys (A B)
+	names := []string{"Bob", "Alice", "Charlie", "Emily", "Alexander", "Sophia", "Benjamin", "Olivia", "James", "Peggy"}
+	users := make([]utils.User, len(names))
+	for i := 0; i < len(names); i++ {
+		a, _ := rand.Int(rand.Reader, bn256.Order)
+		b, _ := rand.Int(rand.Reader, bn256.Order)
+		A := new(bn256.G1).ScalarBaseMult(a)
+		B := new(bn256.G1).ScalarBaseMult(b)
+		para := []interface{}{"Register", names[i], contract.EmailPK{utils.G1ToPoint(A), utils.G1ToPoint(B)}}
+		privatekey := utils.GetENV("PRIVATE_KEY_" + strconv.Itoa(i+1))
+		_ = utils.Transact(client, privatekey, big.NewInt(0), ctc, para).(*types.Receipt)
+		users[i] = utils.User{names[i], a, b, A, B, privatekey, nil}
 	}
-	sa := stealth.CalculatePub(stealth.PublicKey{Ap, Bp})
+	//users generate their BIP32 child keys
+	utils.InitBIP32Wallet(client, users)
 
-	r, _ := rand.Int(rand.Reader, bn256.Order)
+	Bob := users[0]
+	Alice := users[1]
+	//Charlie := users[2]
+	//Bob generates Alice's Stealth address after downloading Alice's public keys
+	fmt.Println("=============================test one-to-one mailing=====================")
 	m, _ := rand.Int(rand.Reader, bn256.Order)
 	key := new(bn256.G1).ScalarBaseMult(m)
-	c1 := new(bn256.G1).ScalarBaseMult(r) // c1 = r * G
-	c2 := new(bn256.G1).Add(new(bn256.G1).ScalarMult(sa.S, r), key)
-
 	msg := []byte("Alice, I am inviting you to have a dinner at Jun 29, 2024 18:00. \nBest,\nBob")
-	ct, _ := aes.Encrypt(msg, key.Marshal()[:32])
-	fmt.Println("encrypted email:", ct)
-	// Bob uploads encrypted email content to IPFS
-	sh := shell.NewShell("localhost:5001")
-	cid, _ := sh.Add(strings.NewReader(ct))
-	fmt.Println("One-to-one mail IPFS link:", cid)
-
-	//Bob initiates BIP32 wallet address, Master secret key PRIVATE_KEY_100, 10 child keys PRIVATE_KEY_[11-20]
-	utils.InitBIP32Wallet(client, privatekey1)
-	privatekey11 := utils.GetENV("PRIVATE_KEY_11")
-	para = []interface{}{"MailTo",
-		contract.EmailStealthAddrPub{utils.G1ToPoint(sa.R), utils.G1ToPoint(sa.S)},
-		contract.EmailElGamalCT{utils.G1ToPoint(c1), utils.G1ToPoint(c2)},
-		cid, []string{"Alice", "Bob"}}
-	_ = utils.Transact(client, privatekey11, big.NewInt(0), ctc, para).(*types.Receipt)
-
+	recs := []string{names[8], names[9]} //user names to confuse others
+	utils.MailTo(client, ctc, Bob, key, msg, Alice, recs)
 	//Alice downloads the encrypted email
-	mailRes, _ := ctc.DownloadMail(&bind.CallOpts{}, cid)
-	// Alice obtains sp i.e., logS
-	sp := stealth.ResolvePriv(stealth.SecretKey{ska, skb},
-		stealth.StealthAddrPub{utils.PointToG1(mailRes.Pub.R), utils.PointToG1(mailRes.Pub.S)})
-	c1pNeg := new(bn256.G1).Neg(utils.PointToG1(mailRes.Ct.C1))
-	c2p := utils.PointToG1(mailRes.Ct.C2)
-	keyp := new(bn256.G1).Add(c2p, new(bn256.G1).ScalarMult(c1pNeg, sp))
-	sh.Get(cid, "./alice/")
-	file, err := os.Open("./alice/" + cid)
-	content, _ := io.ReadAll(file)
-	decRes, _ := aes.Decrypt(string(content), keyp.Marshal()[:32])
-	fmt.Println("One-to-one Email content:", decRes)
+	utils.DownloadMail(ctc, Alice)
 
 	//	broadcast encryption
-	//Charlie is a group administrator
-	n := 10
-	cpk, secretKeys := broadcast.Setup(n)
+	//Bob is a group administrator
+	n := len(users)
+	cpk, secretKeys := broadcast.Setup(n, "@group1")
+	Bobindex := 0
+	Bob = users[Bobindex]
+	Bob.BrdUser = &utils.DomainUser{utils.Group{cpk, secretKeys[Bobindex]}, nil, nil}
+	fmt.Println("=============================upload broadcast public keys=====================")
+	//Bob sends secretKeys to each group member via one-to-one mailing (Here, sends secretkeys to the domain)
+	utils.RegisterGroup(client, ctc, Bob, cpk, secretKeys, users)
 
-	// todo Charlie sends secretKeys to each group member via one-to-one mailing
+	fmt.Println("=============================Alice Download broadcast public keys=====================")
+	//brdPriv := utils.DownloadAndResolvePriv(ctc, Alice, cpk.GroupName)
 
-	//Bob is a domain manager, Charlie generates \prod_j∈S g_{n+1-j} for the domain
-	S := []int{1, 3, 8, 6}
-	senderIndex := S[0]
-	domainPK := cpk.BuildDomainPK(S)
-	hdr, beK := cpk.Encrypt(domainPK)
-	senderSK := secretKeys[senderIndex].Di
-	// todo Charlie sends domainPK to Bob via one-to-one mailing
 	//
+	////Charlie is a domain manager, Charlie generates \prod_j∈S g_{n+1-j} for the domain
+	fmt.Println("=============================build domain public keys=====================")
+	size := n / 2
+	S := make([]int, size)
+	for i := 0; i < size; i++ {
+		S[i] = i + 1
+	}
+	domainPK := cpk.BuildDomainPK(S)
+	Charlieindex := 2
+	Charlie := users[Charlieindex]
+	////TODO obtain from blockchain
+	Charlie.BrdUser = &utils.DomainUser{utils.Group{cpk, secretKeys[Bobindex]}, S, domainPK}
+	//senderSK := secretKeys[Charlieindex].Di
+	//// todo Charlie sends domainPK to Bob via one-to-one mailing
 	//Bob encrypts a mail content and broadcast to the domain
 	msg = []byte("Dear Staff, we are going to have a meeting at Jun 30, 2024 09:00 at the gym. \nBest,\nDomain manager")
-	ct, _ = aes.Encrypt(msg, beK.Marshal()[:32])
-	fmt.Println("encrypted email to broadcast:", ct)
-	// Bob uploads encrypted email content to IPFS
-	cid2, _ := sh.Add(strings.NewReader(ct))
-	fmt.Println("broadcast mail IPFS link:", cid2)
-	privatekey12 := utils.GetENV("PRIVATE_KEY_12")
-	x, _ := rand.Int(rand.Reader, bn256.Order)
-	x = big.NewInt(1)
-	domainRecivers := contract.EmailBrdcastCT{utils.G1ToPoint(hdr.C0), utils.G1ToPoint(hdr.C1)}
-	proof := contract.EmailDomainProof{utils.G1ToPoint(new(bn256.G1).ScalarMult(&senderSK, x)),
-		utils.G2ToPoint(&cpk.QArr[senderIndex]), utils.G1ToPoint(new(bn256.G1).ScalarMult(&cpk.V, x))}
-	//e(skipws,g2)= e(pki,vpows)
-	fmt.Println(bn256.Pair(new(bn256.G1).ScalarMult(&senderSK, x), &cpk.QArr[0]).String()[:32])
-	fmt.Println(bn256.Pair(new(bn256.G1).ScalarMult(&cpk.V, x), &cpk.QArr[senderIndex]).String()[:32])
-	para = []interface{}{"BrdcastTo", domainRecivers, proof, cid2, []string{"Alice", "Bob"}}
-	_ = utils.Transact(client, privatekey12, big.NewInt(0), ctc, para).(*types.Receipt)
-	pairingRes, _ := ctc.GetPairingRes(&bind.CallOpts{})
-	fmt.Printf("GetPairingRes used: %d\n", pairingRes)
-
-	decIndex := S[1]
-	beKp := secretKeys[decIndex].Decrypt(S, hdr, cpk)
-	sh.Get(cid2, "./alice/")
-	file, _ = os.Open("./alice/" + cid2)
-	content, _ = io.ReadAll(file)
-	decRes, _ = aes.Decrypt(string(content), beKp.Marshal()[:32])
-	fmt.Println("Broadcast Email content:", decRes)
+	//cid := utils.MailTo(client, ctc, Bob, key, msg, Alice, recs)
+	cid2 := utils.BroadcastTo(client, ctc, Charlie, cpk, msg)
+	//pairingRes, _ := ctc.GetPairingRes(&bind.CallOpts{})
+	//fmt.Printf("GetPairingRes: %v\n", pairingRes)
+	//
+	////todo Alice downloads mails and decrypt cid2,GroupName
+	//
+	brdPriv := utils.DownloadAndResolvePriv(ctc, Alice, cpk.GroupName)
+	Alice.BrdUser = &utils.DomainUser{utils.Group{cpk, brdPriv}, S, domainPK}
+	utils.DownloadBrdMail(ctc, Alice, cpk, brdPriv, cid2)
 
 }
