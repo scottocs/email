@@ -191,10 +191,10 @@ contract Email {
 	mapping(string => mapping(uint64 => string[])) public psid2Day2Cid;
 	mapping(string => MailRev) public cid2Mail;
 	mapping(string => BrdcastHeader) public cid2BrdcMails;
-	mapping(string => Group) public grpId2Group;
-	mapping(string => uint32[]) public domainId2S;
+	mapping(string => Domain) public domainId2Domain;
+	mapping(string => uint32[]) public clusterId2S;
 	mapping(string => string[] ) public psid2GrpIds;
-	mapping(string => mapping(uint64 => string[])) public domainId2Day2Cid;
+	mapping(string => mapping(uint64 => string[])) public clusterId2Day2Cid;
 
 	bool public pairingRes;
 
@@ -206,7 +206,7 @@ contract Email {
 		G1Point R;
 		G1Point S;
 	}
-	struct Group {
+	struct Domain {
 		G1Point[] pArr;
 		G2Point[] qArr;
 		G1Point v;
@@ -224,7 +224,7 @@ contract Email {
 		G1Point C1;
 		G1Point C2;
 	}
-	struct DomainProof{
+	struct ClusterProof{
 		G1Point skipows;
 		G2Point pki;
 		G1Point vpows;
@@ -266,20 +266,20 @@ contract Email {
 		return (cids, mails);
 	}
 
-	function regGroup(string memory grpId, G1Point[] memory pArr, G2Point[] memory qArr, G1Point memory v,G1Point[] memory privC1, G1Point[] memory privC2, string[] memory psids) public payable {
-//		GroupParams storage group = ;
-		grpId2Group[grpId].v=G1Point(v.X,v.Y);
+	function regDomain(string memory domainId, G1Point[] memory pArr, G2Point[] memory qArr, G1Point memory v,G1Point[] memory privC1, G1Point[] memory privC2, string[] memory psids) public payable {
+//		DomainParams storage domain = ;
+		domainId2Domain[domainId].v=G1Point(v.X,v.Y);
 		for (uint i = 0; i < qArr.length; i++) {//n+1
-			grpId2Group[grpId].qArr.push(G2Point(qArr[i].X,qArr[i].Y));
+			domainId2Domain[domainId].qArr.push(G2Point(qArr[i].X,qArr[i].Y));
 		}
 		for (uint i = 0; i < pArr.length; i++) {//2n+1
-			grpId2Group[grpId].pArr.push(G1Point(pArr[i].X,pArr[i].Y));
+			domainId2Domain[domainId].pArr.push(G1Point(pArr[i].X,pArr[i].Y));
 		}
 		for (uint i = 0; i < privC1.length; i++) {//n
-			grpId2Group[grpId].privC1.push(G1Point(privC1[i].X,privC1[i].Y));
-			grpId2Group[grpId].privC2.push(G1Point(privC2[i].X,privC2[i].Y));
-			grpId2Group[grpId].psids.push(psids[i]);
-			psid2GrpIds[psids[i]].push(grpId);
+			domainId2Domain[domainId].privC1.push(G1Point(privC1[i].X,privC1[i].Y));
+			domainId2Domain[domainId].privC2.push(G1Point(privC2[i].X,privC2[i].Y));
+			domainId2Domain[domainId].psids.push(psids[i]);
+			psid2GrpIds[psids[i]].push(domainId);
 		}
 	}
 
@@ -310,46 +310,46 @@ contract Email {
 //		str.push(res[1]);
 		return res;
 	}
-	// function downloadSplit(string memory domainId) public view returns (string[] memory) {
+	// function downloadSplit(string memory clusterId) public view returns (string[] memory) {
 	// 	return str;
 	// }
-	function regDomain(string memory domainId, uint32[] memory S) public payable {
-		string[] memory parts = splitAt(domainId);
-		Group memory group = grpId2Group[parts[1]];
-		if (group.pArr.length > 0){//domain should be built when a group exists
-			domainId2S[domainId]= S;
+	function regCluster(string memory clusterId, uint32[] memory S) public payable {
+		string[] memory parts = splitAt(clusterId);
+		Domain memory domain = domainId2Domain[parts[1]];
+		if (domain.pArr.length > 0){//cluster should be built when a domain exists
+			clusterId2S[clusterId]= S;
 		}
 
 	}
-	function getS(string memory domainId) public view returns (uint32[] memory) {
-		string[] memory parts = splitAt(domainId);		
-		// return grpId2Group[parts[1]].pArr.length;
-		return domainId2S[domainId];
+	function getS(string memory clusterId) public view returns (uint32[] memory) {
+		string[] memory parts = splitAt(clusterId);		
+		// return domainId2Domain[parts[1]].pArr.length;
+		return clusterId2S[clusterId];
 	}
 
-	function retrBrdPrivs(string memory grpId,string memory name) public view returns (uint, G1Point memory,G1Point memory) {
+	function retrBrdPrivs(string memory domainId,string memory name) public view returns (uint, G1Point memory,G1Point memory) {
 		G1Point memory c1;
 		G1Point memory c2;
 		uint index;
-		for (uint i = 0; i < grpId2Group[grpId].privC1.length; i++) {
-			string memory nameBC = grpId2Group[grpId].psids[i];
+		for (uint i = 0; i < domainId2Domain[domainId].privC1.length; i++) {
+			string memory nameBC = domainId2Domain[domainId].psids[i];
 			if(keccak256(abi.encodePacked(nameBC)) == keccak256(abi.encodePacked(name))){
-				c1= grpId2Group[grpId].privC1[i];
-				c2= grpId2Group[grpId].privC2[i];
+				c1= domainId2Domain[domainId].privC1[i];
+				c2= domainId2Domain[domainId].privC2[i];
 				index=i;
 				break;
 			}
 		}
 		return (index,c1, c2);
 	}
-	function getBrdPKs(string memory grpId) public view returns (G1Point[] memory,G2Point[] memory, G1Point memory) {
-		return (grpId2Group[grpId].pArr, grpId2Group[grpId].qArr, grpId2Group[grpId].v);
+	function getBrdPKs(string memory domainId) public view returns (G1Point[] memory,G2Point[] memory, G1Point memory) {
+		return (domainId2Domain[domainId].pArr, domainId2Domain[domainId].qArr, domainId2Domain[domainId].v);
 	}
-	// function DownloadDomainPK(string memory grpId) public view returns (G1Point[] memory,G2Point[] memory, G1Point memory) {
-	// 	return (grpId2Group[grpId].pArr, grpId2Group[grpId].qArr, grpId2Group[grpId].v);
+	// function DownloadClusterPK(string memory domainId) public view returns (G1Point[] memory,G2Point[] memory, G1Point memory) {
+	// 	return (domainId2Domain[domainId].pArr, domainId2Domain[domainId].qArr, domainId2Domain[domainId].v);
 	// }
 
-	function bcstTo(BrdcastHeader memory hdr, string memory domainId, DomainProof memory proof, string memory cid) public payable returns (bool)  {
+	function bcstTo(BrdcastHeader memory hdr, string memory clusterId, ClusterProof memory proof, string memory cid) public payable returns (bool)  {
 		// todo anonymoty of senders
 		G1Point[] memory p1Arr = new G1Point[](2);
 		G2Point[] memory p2Arr = new G2Point[](2);
@@ -363,7 +363,7 @@ contract Email {
 			uint64 currentTime = uint64(block.timestamp);
 			uint64 day = currentTime - (currentTime % 86400);
 			cid2BrdcMails[cid] = hdr;
-			domainId2Day2Cid[domainId][day].push(cid);
+			clusterId2Day2Cid[clusterId][day].push(cid);
 			return true;
 		}else{
 			return false;
@@ -371,8 +371,8 @@ contract Email {
 		//TODO	emit event
 	}
 
-	function getDailyBrdMail(string memory domainId, uint64 day) public view returns (string[] memory, BrdcastHeader[] memory) {
-		string[] memory cids = domainId2Day2Cid[domainId][day];
+	function getDailyBrdMail(string memory clusterId, uint64 day) public view returns (string[] memory, BrdcastHeader[] memory) {
+		string[] memory cids = clusterId2Day2Cid[clusterId][day];
 		BrdcastHeader[] memory mails = new BrdcastHeader[](cids.length);
 		for (uint i = 0; i < cids.length; i++) {
 			mails[i]=cid2BrdcMails[cids[i]];
@@ -380,17 +380,14 @@ contract Email {
 		return (cids, mails);
 	}
 
-	// function downloadBrdCT(string memory cid) public view returns (BrdcastHeader memory) {
-	// 	return cid2BrdcMails[cid];
-	// }
-
+	
 	function getPairingRes() public view returns (bool) {
 		return pairingRes;
 	}
 
 	
 
-	function getMyGroups(string memory psid) public view returns (string[] memory) {
+	function getMyDomains(string memory psid) public view returns (string[] memory) {
 		return psid2GrpIds[psid];
 	}
 

@@ -11,8 +11,8 @@ func TestBroadcast(t *testing.T) {
 	////fmt.Println(secretKeys)
 	//
 	//S := []int{1, 3}
-	//domainPK := cpk.BuildDomainPK(S)
-	//hdr, beK := cpk.Encrypt(domainPK)
+	//clusterPK := cpk.BuildClusterPK(S)
+	//hdr, beK := cpk.Encrypt(clusterPK)
 	////hdr, K, err := bpk.Encrypt(S)
 	//
 	//beKp := secretKeys[3].Decrypt(S, hdr, cpk)

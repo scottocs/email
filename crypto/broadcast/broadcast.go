@@ -163,7 +163,7 @@ func Setup(n int, grpId string) (PKs, []SK) {
 	}, privateKeys
 }
 
-func (cpk *PKs) buildDomainPK(S []uint32) *bn256.G1 {
+func (cpk *PKs) buildClusterPK(S []uint32) *bn256.G1 {
 	n := len(cpk.QArr) - 1
 	pk := new(bn256.G1).ScalarBaseMult(big.NewInt(0))
 	for _, j := range S {
@@ -173,7 +173,7 @@ func (cpk *PKs) buildDomainPK(S []uint32) *bn256.G1 {
 	return pk
 }
 func (cpk *PKs) Encrypt(S []uint32) (Header, *bn256.GT) {
-	domainPK := cpk.buildDomainPK(S)
+	clusterPK := cpk.buildClusterPK(S)
 	t, _ := rand.Int(rand.Reader, bn256.Order)
 	//t = big.NewInt(2) //
 	n := len(cpk.QArr) - 1
@@ -183,7 +183,7 @@ func (cpk *PKs) Encrypt(S []uint32) (Header, *bn256.GT) {
 	hdr := Header{
 		C0:  new(bn256.G1).ScalarMult(g, t),
 		C0p: new(bn256.G2).ScalarMult(q, t),
-		C1:  new(bn256.G1).ScalarMult(new(bn256.G1).Add(&cpk.V, domainPK), t),
+		C1:  new(bn256.G1).ScalarMult(new(bn256.G1).Add(&cpk.V, clusterPK), t),
 	}
 	ele := bn256.Pair(&cpk.PArr[n], &cpk.QArr[1])
 	K := ele.ScalarMult(ele, t)

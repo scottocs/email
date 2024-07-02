@@ -95,10 +95,10 @@ func Transact(client *ethclient.Client, privatekey string, value *big.Int, ctc *
 		f = ctc.MailTo
 	case "BcstTo":
 		f = ctc.BcstTo
-	case "RegGroup":
-		f = ctc.RegGroup
 	case "RegDomain":
 		f = ctc.RegDomain
+	case "RegCluster":
+		f = ctc.RegCluster
 	case "RetrBrdPrivs":
 		f = ctc.RetrBrdPrivs
 		//case "SplitAt":
@@ -371,12 +371,12 @@ func ReadMail(ctc *contract.Contract, my User) {
 	}
 
 }
-func RegDomain(client *ethclient.Client, ctc *contract.Contract, from User, name string, S []uint32) {
-	para := []interface{}{"RegDomain", name, S}
+func RegCluster(client *ethclient.Client, ctc *contract.Contract, from User, name string, S []uint32) {
+	para := []interface{}{"RegCluster", name, S}
 	_ = Transact(client, from.Privatekey, big.NewInt(0), ctc, para).(*types.Receipt)
 }
 
-func RegGroup(client *ethclient.Client, ctc *contract.Contract, from User, cpk broadcast.PKs, privs []broadcast.SK, to []User) {
+func RegDomain(client *ethclient.Client, ctc *contract.Contract, from User, cpk broadcast.PKs, privs []broadcast.SK, to []User) {
 	c1 := make([]bn256.G1, len(privs))
 	c2 := make([]bn256.G1, len(privs))
 	names := make([]string, len(privs))
@@ -392,12 +392,12 @@ func RegGroup(client *ethclient.Client, ctc *contract.Contract, from User, cpk b
 	}
 
 	//fmt.Println(len(cpk.PArr), len(cpk.QArr), len(to)) //2n+1,n+1,n
-	para := []interface{}{"RegGroup", cpk.GrpId, G1ArrToPoints(cpk.PArr), G2ArrToPoints(cpk.QArr),
+	para := []interface{}{"RegDomain", cpk.GrpId, G1ArrToPoints(cpk.PArr), G2ArrToPoints(cpk.QArr),
 		G1ToPoint(&cpk.V), G1ArrToPoints(c1), G1ArrToPoints(c2), names}
 	_ = Transact(client, from.Privatekey, big.NewInt(0), ctc, para).(*types.Receipt)
 }
-func DownloadAndResolvePriv(ctc *contract.Contract, my User, groupname string) broadcast.SK {
-	index, c1, c2, _ := ctc.RetrBrdPrivs(&bind.CallOpts{}, groupname, my.Psid)
+func DownloadAndResolvePriv(ctc *contract.Contract, my User, Domainname string) broadcast.SK {
+	index, c1, c2, _ := ctc.RetrBrdPrivs(&bind.CallOpts{}, Domainname, my.Psid)
 	c1pNeg := new(bn256.G1).Neg(PointToG1(c1))
 	myBrdPriv := new(bn256.G1).Add(PointToG1(c2), new(bn256.G1).ScalarMult(c1pNeg, my.Aa))
 	//
@@ -407,11 +407,11 @@ func DownloadAndResolvePriv(ctc *contract.Contract, my User, groupname string) b
 	}
 }
 
-func BroadcastTo(client *ethclient.Client, ctc *contract.Contract, sender User, msg []byte, domainId string) string {
+func BroadcastTo(client *ethclient.Client, ctc *contract.Contract, sender User, msg []byte, clusterId string) string {
 	// todo download cpk
-	grpId := strings.Split(domainId, "@")[1]
-	brdPKs := sender.Groups[grpId].PKs
-	hdr, beK := brdPKs.Encrypt(sender.Groups[grpId].Domains[domainId])
+	grpId := strings.Split(clusterId, "@")[1]
+	brdPKs := sender.Domains[grpId].PKs
+	hdr, beK := brdPKs.Encrypt(sender.Domains[grpId].Clusters[clusterId])
 	//fmt.Println("beK.String()", beK.String()[:30])
 	ct, _ := aes.Encrypt(msg, beK.Marshal()[:32])
 	fmt.Println("encrypted email to broadcast:", ct)
@@ -420,25 +420,25 @@ func BroadcastTo(client *ethclient.Client, ctc *contract.Contract, sender User, 
 	fmt.Println("broadcast mail IPFS link:", cid)
 	x, _ := rand.Int(rand.Reader, bn256.Order)
 	//x = big.NewInt(1)
-	senderIndex := sender.Groups[grpId].SK.I
-	domainRecivers := contract.EmailBrdcastHeader{G1ToPoint(hdr.C0), G1ToPoint(hdr.C1), G2ToPoint(hdr.C0p)}
-	ptr := sender.Groups[grpId].SK.Di
-	proof := contract.EmailDomainProof{G1ToPoint(new(bn256.G1).ScalarMult(&ptr, x)),
+	senderIndex := sender.Domains[grpId].SK.I
+	clusterRecivers := contract.EmailBrdcastHeader{G1ToPoint(hdr.C0), G1ToPoint(hdr.C1), G2ToPoint(hdr.C0p)}
+	ptr := sender.Domains[grpId].SK.Di
+	proof := contract.EmailClusterProof{G1ToPoint(new(bn256.G1).ScalarMult(&ptr, x)),
 		G2ToPoint(&brdPKs.QArr[senderIndex]), G1ToPoint(new(bn256.G1).ScalarMult(&brdPKs.V, x))}
 	//e(skipws,g2)= e(pki,vpows)
-	para := []interface{}{"BcstTo", domainRecivers, domainId, proof, cid}
+	para := []interface{}{"BcstTo", clusterRecivers, clusterId, proof, cid}
 	_ = Transact(client, sender.Privatekey, big.NewInt(0), ctc, para).(*types.Receipt)
 	return cid
 }
 
-func ReadBrdMail(ctc *contract.Contract, my User, domainId string) {
+func ReadBrdMail(ctc *contract.Contract, my User, clusterId string) {
 	//contract.EmailBrdcastCT{G1ToPoint(hdr.C0), G1ToPoint(hdr.C1)}
-	grpId := strings.Split(domainId, "@")[1]
+	grpId := strings.Split(clusterId, "@")[1]
 	currentTime := time.Now()
 	timestamp := currentTime.Unix()
 	dayTS := timestamp - (timestamp % 86400)
-	//todo only one brdHdr is required for a domain
-	cids, brdHdrs, _ := ctc.GetDailyBrdMail(&bind.CallOpts{}, domainId, uint64(dayTS))
+	//todo only one brdHdr is required for a cluster
+	cids, brdHdrs, _ := ctc.GetDailyBrdMail(&bind.CallOpts{}, clusterId, uint64(dayTS))
 	for i := 0; i < len(cids); i++ {
 		cid := cids[i]
 		brdHdr := brdHdrs[i]
@@ -447,9 +447,9 @@ func ReadBrdMail(ctc *contract.Contract, my User, domainId string) {
 			PointToG2(brdHdr.C0p),
 			PointToG1(brdHdr.C1),
 		}
-		ptr := my.Groups[grpId].SK
-		//fmt.Println(i, "my.Groups[grpId].SK", ptr.Di, ptr.Di.String()[:30])
-		beKp := ptr.Decrypt(my.Groups[grpId].Domains[domainId], hdr, my.Groups[grpId].PKs)
+		ptr := my.Domains[grpId].SK
+		//fmt.Println(i, "my.Domains[grpId].SK", ptr.Di, ptr.Di.String()[:30])
+		beKp := ptr.Decrypt(my.Domains[grpId].Clusters[clusterId], hdr, my.Domains[grpId].PKs)
 		GetIPFSClient().Get(cid, "./"+my.Psid+"/")
 		file, _ := os.Open("./" + my.Psid + "/" + cid)
 		content, _ := io.ReadAll(file)
