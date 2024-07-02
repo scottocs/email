@@ -93,14 +93,14 @@ func Transact(client *ethclient.Client, privatekey string, value *big.Int, ctc *
 		f = ctc.Register
 	case "MailTo":
 		f = ctc.MailTo
-	case "BrdcastTo":
-		f = ctc.BrdcastTo
-	case "RegisterGroup":
-		f = ctc.RegisterGroup
-	case "RegisterDomain":
-		f = ctc.RegisterDomain
-	case "DownloadBrdPrivs":
-		f = ctc.DownloadBrdPrivs
+	case "BcstTo":
+		f = ctc.BcstTo
+	case "RegGroup":
+		f = ctc.RegGroup
+	case "RegDomain":
+		f = ctc.RegDomain
+	case "RetrBrdPrivs":
+		f = ctc.RetrBrdPrivs
 		//case "SplitAt":
 		//	f = ctc.SplitAt
 	}
@@ -350,7 +350,7 @@ func ReadMail(ctc *contract.Contract, my User) {
 	timestamp := currentTime.Unix()
 	dayTS := timestamp - (timestamp % 86400)
 
-	cids, dayMails, _ := ctc.DownloadMail(&bind.CallOpts{}, my.Psid, uint64(dayTS))
+	cids, dayMails, _ := ctc.GetDailyMail(&bind.CallOpts{}, my.Psid, uint64(dayTS))
 	//fmt.Println(uint64(dayTS), dayMails)
 	for i := 0; i < len(cids); i++ {
 		sp := stealth.ResolvePriv(stealth.SecretKey{my.Aa, my.Bb},
@@ -371,12 +371,12 @@ func ReadMail(ctc *contract.Contract, my User) {
 	}
 
 }
-func RegisterDomain(client *ethclient.Client, ctc *contract.Contract, from User, name string, S []uint32) {
-	para := []interface{}{"RegisterDomain", name, S}
+func RegDomain(client *ethclient.Client, ctc *contract.Contract, from User, name string, S []uint32) {
+	para := []interface{}{"RegDomain", name, S}
 	_ = Transact(client, from.Privatekey, big.NewInt(0), ctc, para).(*types.Receipt)
 }
 
-func RegisterGroup(client *ethclient.Client, ctc *contract.Contract, from User, cpk broadcast.PKs, privs []broadcast.SK, to []User) {
+func RegGroup(client *ethclient.Client, ctc *contract.Contract, from User, cpk broadcast.PKs, privs []broadcast.SK, to []User) {
 	c1 := make([]bn256.G1, len(privs))
 	c2 := make([]bn256.G1, len(privs))
 	names := make([]string, len(privs))
@@ -392,12 +392,12 @@ func RegisterGroup(client *ethclient.Client, ctc *contract.Contract, from User, 
 	}
 
 	//fmt.Println(len(cpk.PArr), len(cpk.QArr), len(to)) //2n+1,n+1,n
-	para := []interface{}{"RegisterGroup", cpk.GrpId, G1ArrToPoints(cpk.PArr), G2ArrToPoints(cpk.QArr),
+	para := []interface{}{"RegGroup", cpk.GrpId, G1ArrToPoints(cpk.PArr), G2ArrToPoints(cpk.QArr),
 		G1ToPoint(&cpk.V), G1ArrToPoints(c1), G1ArrToPoints(c2), names}
 	_ = Transact(client, from.Privatekey, big.NewInt(0), ctc, para).(*types.Receipt)
 }
 func DownloadAndResolvePriv(ctc *contract.Contract, my User, groupname string) broadcast.SK {
-	index, c1, c2, _ := ctc.DownloadBrdPrivs(&bind.CallOpts{}, groupname, my.Psid)
+	index, c1, c2, _ := ctc.RetrBrdPrivs(&bind.CallOpts{}, groupname, my.Psid)
 	c1pNeg := new(bn256.G1).Neg(PointToG1(c1))
 	myBrdPriv := new(bn256.G1).Add(PointToG1(c2), new(bn256.G1).ScalarMult(c1pNeg, my.Aa))
 	//
@@ -426,7 +426,7 @@ func BroadcastTo(client *ethclient.Client, ctc *contract.Contract, sender User, 
 	proof := contract.EmailDomainProof{G1ToPoint(new(bn256.G1).ScalarMult(&ptr, x)),
 		G2ToPoint(&brdPKs.QArr[senderIndex]), G1ToPoint(new(bn256.G1).ScalarMult(&brdPKs.V, x))}
 	//e(skipws,g2)= e(pki,vpows)
-	para := []interface{}{"BrdcastTo", domainRecivers, domainId, proof, cid}
+	para := []interface{}{"BcstTo", domainRecivers, domainId, proof, cid}
 	_ = Transact(client, sender.Privatekey, big.NewInt(0), ctc, para).(*types.Receipt)
 	return cid
 }
@@ -438,7 +438,7 @@ func ReadBrdMail(ctc *contract.Contract, my User, domainId string) {
 	timestamp := currentTime.Unix()
 	dayTS := timestamp - (timestamp % 86400)
 	//todo only one brdHdr is required for a domain
-	cids, brdHdrs, _ := ctc.DownloadBrdMail(&bind.CallOpts{}, domainId, uint64(dayTS))
+	cids, brdHdrs, _ := ctc.GetDailyBrdMail(&bind.CallOpts{}, domainId, uint64(dayTS))
 	for i := 0; i < len(cids); i++ {
 		cid := cids[i]
 		brdHdr := brdHdrs[i]

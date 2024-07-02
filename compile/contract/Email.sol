@@ -257,7 +257,7 @@ contract Email {
 		//TODO	emit event
 	}
 
-	function downloadMail(string memory psid, uint64 day) public view returns (string[] memory, MailRev[] memory) {
+	function getDailyMail(string memory psid, uint64 day) public view returns (string[] memory, MailRev[] memory) {
 		string[] memory cids = psid2Day2Cid[psid][day];
 		MailRev[] memory mails = new MailRev[](cids.length);
 		for (uint i = 0; i < cids.length; i++) {
@@ -266,7 +266,7 @@ contract Email {
 		return (cids, mails);
 	}
 
-	function registerGroup(string memory grpId, G1Point[] memory pArr, G2Point[] memory qArr, G1Point memory v,G1Point[] memory privC1, G1Point[] memory privC2, string[] memory psids) public payable {
+	function regGroup(string memory grpId, G1Point[] memory pArr, G2Point[] memory qArr, G1Point memory v,G1Point[] memory privC1, G1Point[] memory privC2, string[] memory psids) public payable {
 //		GroupParams storage group = ;
 		grpId2Group[grpId].v=G1Point(v.X,v.Y);
 		for (uint i = 0; i < qArr.length; i++) {//n+1
@@ -313,7 +313,7 @@ contract Email {
 	// function downloadSplit(string memory domainId) public view returns (string[] memory) {
 	// 	return str;
 	// }
-	function registerDomain(string memory domainId, uint32[] memory S) public payable {
+	function regDomain(string memory domainId, uint32[] memory S) public payable {
 		string[] memory parts = splitAt(domainId);
 		Group memory group = grpId2Group[parts[1]];
 		if (group.pArr.length > 0){//domain should be built when a group exists
@@ -321,13 +321,13 @@ contract Email {
 		}
 
 	}
-	function downloadS(string memory domainId) public view returns (uint32[] memory) {
+	function getS(string memory domainId) public view returns (uint32[] memory) {
 		string[] memory parts = splitAt(domainId);		
 		// return grpId2Group[parts[1]].pArr.length;
 		return domainId2S[domainId];
 	}
 
-	function DownloadBrdPrivs(string memory grpId,string memory name) public view returns (uint, G1Point memory,G1Point memory) {
+	function retrBrdPrivs(string memory grpId,string memory name) public view returns (uint, G1Point memory,G1Point memory) {
 		G1Point memory c1;
 		G1Point memory c2;
 		uint index;
@@ -342,14 +342,14 @@ contract Email {
 		}
 		return (index,c1, c2);
 	}
-	function DownloadBrdPKs(string memory grpId) public view returns (G1Point[] memory,G2Point[] memory, G1Point memory) {
+	function getBrdPKs(string memory grpId) public view returns (G1Point[] memory,G2Point[] memory, G1Point memory) {
 		return (grpId2Group[grpId].pArr, grpId2Group[grpId].qArr, grpId2Group[grpId].v);
 	}
 	// function DownloadDomainPK(string memory grpId) public view returns (G1Point[] memory,G2Point[] memory, G1Point memory) {
 	// 	return (grpId2Group[grpId].pArr, grpId2Group[grpId].qArr, grpId2Group[grpId].v);
 	// }
 
-	function brdcastTo(BrdcastHeader memory hdr, string memory domainId, DomainProof memory proof, string memory cid) public payable returns (bool)  {
+	function bcstTo(BrdcastHeader memory hdr, string memory domainId, DomainProof memory proof, string memory cid) public payable returns (bool)  {
 		// todo anonymoty of senders
 		G1Point[] memory p1Arr = new G1Point[](2);
 		G2Point[] memory p2Arr = new G2Point[](2);
@@ -371,7 +371,7 @@ contract Email {
 		//TODO	emit event
 	}
 
-	function downloadBrdMail(string memory domainId, uint64 day) public view returns (string[] memory, BrdcastHeader[] memory) {
+	function getDailyBrdMail(string memory domainId, uint64 day) public view returns (string[] memory, BrdcastHeader[] memory) {
 		string[] memory cids = domainId2Day2Cid[domainId][day];
 		BrdcastHeader[] memory mails = new BrdcastHeader[](cids.length);
 		for (uint i = 0; i < cids.length; i++) {

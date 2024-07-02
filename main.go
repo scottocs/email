@@ -68,7 +68,7 @@ func main() {
 	//Bob.Groups = map[string]utils.Groups{grpId: {brdPks, brdPrivs[Bobindex], nil}}
 	fmt.Println("=============================upload broadcast public keys=====================")
 	//Bob sends brdPrivs to each group member via one-to-one mailing (Here, sends secretkeys to the domain)
-	utils.RegisterGroup(client, ctc, Bob, brdPks, brdPrivs, users)
+	utils.RegGroup(client, ctc, Bob, brdPks, brdPrivs, users)
 
 	////Charlie is a domain manager, Charlie generates \prod_j∈S g_{n+1-j} for the domain
 	fmt.Println("=============================build domain public keys=====================")
@@ -80,15 +80,15 @@ func main() {
 	domainId := "computer@" + grpId
 	Charlie := users[2]
 	fmt.Println(domainId)
-	utils.RegisterDomain(client, ctc, Charlie, domainId, S)
+	utils.RegDomain(client, ctc, Charlie, domainId, S)
 	//todo multiple domains
 
 	// Emily as a member, broadcast a email
 	fmt.Println("=============================broadcast email 1=====================")
 	Emily := users[3]
 	//todo download grpId and domainId
-	pArrEmily, qArrEmily, vEmily, _ := ctc.DownloadBrdPKs(&bind.CallOpts{}, grpId)
-	SEmily, _ := ctc.DownloadS(&bind.CallOpts{}, domainId)
+	pArrEmily, qArrEmily, vEmily, _ := ctc.GetBrdPKs(&bind.CallOpts{}, grpId)
+	SEmily, _ := ctc.GetS(&bind.CallOpts{}, domainId)
 	//fmt.Println(SEmily)
 	brdPksEmily := broadcast.PKs{utils.PointsToG1(pArrEmily), utils.PointsToG2(qArrEmily), *utils.PointToG1(vEmily), grpId}
 	brdPrivEmily := utils.DownloadAndResolvePriv(ctc, Emily, grpId)
@@ -99,8 +99,8 @@ func main() {
 	// Alexander as a member, broadcast a email
 	fmt.Println("=============================broadcast email 2=====================")
 	Alexander := users[4]
-	pArrAlexander, qArrAlexander, vAlexander, _ := ctc.DownloadBrdPKs(&bind.CallOpts{}, grpId)
-	SAlexander, _ := ctc.DownloadS(&bind.CallOpts{}, domainId)
+	pArrAlexander, qArrAlexander, vAlexander, _ := ctc.GetBrdPKs(&bind.CallOpts{}, grpId)
+	SAlexander, _ := ctc.GetS(&bind.CallOpts{}, domainId)
 	//fmt.Println(SAlexander)
 	brdPksAlexander := broadcast.PKs{utils.PointsToG1(pArrAlexander), utils.PointsToG2(qArrAlexander), *utils.PointToG1(vAlexander), grpId}
 	brdPrivAlexander := utils.DownloadAndResolvePriv(ctc, Alexander, grpId)
@@ -115,8 +115,8 @@ func main() {
 	groupIds, _ := ctc.GetMyGroups(&bind.CallOpts{}, Alice.Psid)
 
 	for i := 0; i < len(groupIds); i++ {
-		SAlice, _ := ctc.DownloadS(&bind.CallOpts{}, domainId)
-		pArrAlice, qArrAlice, vAlice, _ := ctc.DownloadBrdPKs(&bind.CallOpts{}, groupIds[i])
+		SAlice, _ := ctc.GetS(&bind.CallOpts{}, domainId)
+		pArrAlice, qArrAlice, vAlice, _ := ctc.GetBrdPKs(&bind.CallOpts{}, groupIds[i])
 		brdPksAlice := broadcast.PKs{utils.PointsToG1(pArrAlice), utils.PointsToG2(qArrAlice), *utils.PointToG1(vAlice), groupIds[i]}
 		brdPrivAlice := utils.DownloadAndResolvePriv(ctc, Alice, groupIds[i])
 		//fmt.Println(i, "brdPrivAlice", brdPrivAlice.Di.String()[:30])
