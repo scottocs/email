@@ -9,14 +9,14 @@ import (
 	"math/big"
 )
 
-type CompletePublicKey struct {
-	PArr      []bn256.G1 `json:"g1"`
-	QArr      []bn256.G2 `json:"g2"`
-	V         bn256.G1   `json:"v"`
-	GroupName string     `json:"name"`
+type PKs struct {
+	PArr  []bn256.G1 `json:"g1"`
+	QArr  []bn256.G2 `json:"g2"`
+	V     bn256.G1   `json:"v"`
+	GrpId string     `json:"grpId"`
 }
 
-func (c *CompletePublicKey) MarshalJSON() ([]byte, error) {
+func (c *PKs) MarshalJSON() ([]byte, error) {
 	pArr := make([]string, len(c.PArr))
 	for i, p := range c.PArr {
 		pArr[i] = fmt.Sprintf("%x", p.Marshal())
@@ -30,24 +30,24 @@ func (c *CompletePublicKey) MarshalJSON() ([]byte, error) {
 	v := fmt.Sprintf("%x", c.V.Marshal())
 
 	return json.Marshal(&struct {
-		G1   []string `json:"g1"`
-		G2   []string `json:"g2"`
-		V    string   `json:"v"`
-		Name string   `json:"name"`
+		G1    []string `json:"g1"`
+		G2    []string `json:"g2"`
+		V     string   `json:"v"`
+		grpId string   `json:"grpId"`
 	}{
-		G1:   pArr,
-		G2:   qArr,
-		V:    v,
-		Name: c.GroupName,
+		G1:    pArr,
+		G2:    qArr,
+		V:     v,
+		grpId: c.GrpId,
 	})
 }
 
-func (c *CompletePublicKey) UnmarshalJSON(data []byte) error {
+func (c *PKs) UnmarshalJSON(data []byte) error {
 	var aux struct {
-		G1   []string `json:"g1"`
-		G2   []string `json:"g2"`
-		V    string   `json:"v"`
-		Name string   `json:"name"`
+		G1    []string `json:"g1"`
+		G2    []string `json:"g2"`
+		V     string   `json:"v"`
+		GrpId string   `json:"grpId"`
 	}
 
 	if err := json.Unmarshal(data, &aux); err != nil {
@@ -87,19 +87,19 @@ func (c *CompletePublicKey) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	c.GroupName = aux.Name
+	c.GrpId = aux.GrpId
 
 	return nil
 }
-func (pk *CompletePublicKey) String() string {
+func (pk *PKs) String() string {
 	//fmt.Println(pk.PArr[0].String())
 	//fmt.Println(pk.QArr[0].String())
 	jsonData, _ := json.Marshal(pk)
 	return string(jsonData)
 }
 
-func JSON2CompletePublicKey(cpkStr string) CompletePublicKey {
-	var newPk CompletePublicKey
+func JSON2CompletePublicKey(cpkStr string) PKs {
+	var newPk PKs
 	_ = json.Unmarshal(([]byte)(cpkStr), &newPk)
 	//fmt.Println("反序列化成功", newPk.QArr[1].String())
 	return newPk
@@ -111,12 +111,12 @@ type Header struct {
 	C1  *bn256.G1
 }
 
-type AdvertiserSecretKey struct {
+type SK struct {
 	I  int
 	Di bn256.G1
 }
 
-func Setup(n int, name string) (CompletePublicKey, []AdvertiserSecretKey) {
+func Setup(n int, grpId string) (PKs, []SK) {
 	r := rand.Reader
 	//_, P, _ := bn256.RandomG1(r)
 	//_, Q, _ := bn256.RandomG2(r)
@@ -147,23 +147,23 @@ func Setup(n int, name string) (CompletePublicKey, []AdvertiserSecretKey) {
 	//gamma = big.NewInt(2) //
 	V := new(bn256.G1).ScalarMult(P, gamma)
 	//fmt.Println(V.String() == PArr[1].String())
-	privateKeys := make([]AdvertiserSecretKey, n+1)
+	privateKeys := make([]SK, n+1)
 	for i := 0; i < n+1; i++ {
-		privateKeys[i] = AdvertiserSecretKey{
+		privateKeys[i] = SK{
 			I:  i,
 			Di: *new(bn256.G1).ScalarMult(&PArr[i], gamma),
 		}
 	}
 
-	return CompletePublicKey{
-		PArr:      PArr,
-		QArr:      QArr,
-		V:         *V,
-		GroupName: name,
+	return PKs{
+		PArr:  PArr,
+		QArr:  QArr,
+		V:     *V,
+		GrpId: grpId,
 	}, privateKeys
 }
 
-func (cpk *CompletePublicKey) buildDomainPK(S []uint32) *bn256.G1 {
+func (cpk *PKs) buildDomainPK(S []uint32) *bn256.G1 {
 	n := len(cpk.QArr) - 1
 	pk := new(bn256.G1).ScalarBaseMult(big.NewInt(0))
 	for _, j := range S {
@@ -172,7 +172,7 @@ func (cpk *CompletePublicKey) buildDomainPK(S []uint32) *bn256.G1 {
 	//fmt.Println(pk)
 	return pk
 }
-func (cpk *CompletePublicKey) Encrypt(S []uint32) (Header, *bn256.GT) {
+func (cpk *PKs) Encrypt(S []uint32) (Header, *bn256.GT) {
 	domainPK := cpk.buildDomainPK(S)
 	t, _ := rand.Int(rand.Reader, bn256.Order)
 	//t = big.NewInt(2) //
@@ -190,19 +190,20 @@ func (cpk *CompletePublicKey) Encrypt(S []uint32) (Header, *bn256.GT) {
 	return hdr, K
 }
 
-func (adsk *AdvertiserSecretKey) Decrypt(S []uint32, hdr Header, cpk CompletePublicKey) *bn256.GT {
+func (adsk *SK) Decrypt(S []uint32, hdr Header, cpk PKs) *bn256.GT {
 	i := adsk.I
 	if i == 0 {
 		fmt.Println("Error: index 0 cannot be used")
 	}
 	n := len(cpk.QArr) - 1
 	numerator := bn256.Pair(hdr.C1, &cpk.QArr[i])
-	val := &adsk.Di
+	val := new(bn256.G1).ScalarBaseMult(big.NewInt(0))
 	for _, j := range S {
 		if int(j) != i {
 			val = val.Add(val, &cpk.PArr[n+1-int(j)+i])
 		}
 	}
+	val = val.Add(val, &adsk.Di)
 	denominator := new(bn256.GT).Neg(bn256.Pair(val, hdr.C0p))
 	out := new(bn256.GT).Add(numerator, denominator)
 
