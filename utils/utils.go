@@ -140,6 +140,18 @@ func Transact(client *ethclient.Client, privatekey string, value *big.Int, ctc *
 	return auth
 }
 
+func ReverseString(input string) string {
+	// 将字符串转换为rune数组
+	runes := []rune(input)
+	length := len(runes)
+
+	// 倒序构建字符串
+	for i := 0; i < length/2; i++ {
+		runes[i], runes[length-i-1] = runes[length-i-1], runes[i]
+	}
+	return string(runes)
+}
+
 // construct a transaction
 func TransactValue(client *ethclient.Client, privatekey string, toAddr common.Address, value *big.Int) *types.Receipt {
 	key, _ := crypto.HexToECDSA(privatekey)
@@ -339,8 +351,11 @@ func MailTo(client *ethclient.Client, ctc *contract.Contract, sender User, key *
 	c2 := new(bn256.G1).Add(new(bn256.G1).ScalarMult(sa.S, r), key)
 	ct, _ := aes.Encrypt(msg, key.Marshal()[:32])
 	cid := IPFSUpload(ct) + "||0"
-	para := []interface{}{"MailTo", contract.EmailStealthAddrPub{G1ToPoint(sa.R), G1ToPoint(sa.S)}, contract.EmailElGamalCT{G1ToPoint(c1), G1ToPoint(c2)}, cid, append(recs, to.Psid)}
-	_ = Transact(client, sender.Privatekey, big.NewInt(0), ctc, para).(*types.Receipt)
+	mail := contract.EmailMail{contract.EmailStealthPub{G1ToPoint(sa.R), G1ToPoint(sa.S)}, contract.EmailElGamalCT{G1ToPoint(c1), G1ToPoint(c2)}}
+	para := []interface{}{"MailTo", mail, cid, append(recs, to.Psid)}
+	ether := big.NewInt(1000000000000000000)
+	ether100 := big.NewInt(1).Mul(ether, big.NewInt(100))
+	_ = Transact(client, sender.Privatekey, ether100, ctc, para).(*types.Receipt)
 
 	return cid
 }
@@ -354,9 +369,9 @@ func ReadMail(ctc *contract.Contract, my User) {
 	//fmt.Println(uint64(dayTS), dayMails)
 	for i := 0; i < len(cids); i++ {
 		sp := stealth.ResolvePriv(stealth.SecretKey{my.Aa, my.Bb},
-			stealth.StealthAddrPub{PointToG1(dayMails[i].Pub.R), PointToG1(dayMails[i].Pub.S)})
+			stealth.StealthPub{PointToG1(dayMails[i].Pub.R), PointToG1(dayMails[i].Pub.S)})
 		cid2Flag := strings.Split(cids[i], "||")
-		fmt.Println(cid2Flag)
+		//fmt.Println(cid2Flag)
 		GetIPFSClient().Get(cid2Flag[0], "./"+my.Psid+"/")
 		file, _ := os.Open("./" + my.Psid + "/" + cid2Flag[0])
 		content, _ := io.ReadAll(file)
@@ -427,7 +442,9 @@ func BroadcastTo(client *ethclient.Client, ctc *contract.Contract, sender User, 
 		G2ToPoint(&brdPKs.QArr[senderIndex]), G1ToPoint(new(bn256.G1).ScalarMult(&brdPKs.V, x))}
 	//e(skipws,g2)= e(pki,vpows)
 	para := []interface{}{"BcstTo", clusterRecivers, clusterId, proof, cid}
-	_ = Transact(client, sender.Privatekey, big.NewInt(0), ctc, para).(*types.Receipt)
+	ether := big.NewInt(1000000000000000000)
+	ether100 := big.NewInt(1).Mul(ether, big.NewInt(100))
+	_ = Transact(client, sender.Privatekey, ether100, ctc, para).(*types.Receipt)
 	return cid
 }
 

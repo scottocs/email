@@ -19,12 +19,12 @@ type SecretKey struct {
 	Aa *big.Int
 	Bb *big.Int
 }
-type StealthAddrPub struct {
+type StealthPub struct {
 	R *bn256.G1
 	S *bn256.G1
 }
 
-func (saPub *StealthAddrPub) Encapsulate() []byte {
+func (saPub *StealthPub) Encapsulate() []byte {
 	return []byte(saPub.S.String())
 }
 func Hash2Int(msg string) *big.Int {
@@ -35,17 +35,17 @@ func Hash2Int(msg string) *big.Int {
 
 }
 
-func CalculatePub(pub PublicKey) *StealthAddrPub {
+func CalculatePub(pub PublicKey) *StealthPub {
 	r, _ := rand.Int(rand.Reader, bn256.Order)
 	g := new(bn256.G1).ScalarBaseMult(big.NewInt(1))
 	R := new(bn256.G1).ScalarMult(g, r)
 	//fmt.Println(g)
 	hash := Hash2Int(new(bn256.G1).ScalarMult(pub.B, r).String())
-	return &StealthAddrPub{R,
+	return &StealthPub{R,
 		new(bn256.G1).Add(pub.A, new(bn256.G1).ScalarMult(g, hash))}
 }
 
-func ResolvePriv(priv SecretKey, stealth StealthAddrPub) *big.Int {
+func ResolvePriv(priv SecretKey, stealth StealthPub) *big.Int {
 	//fmt.Println(priv)
 	h := Hash2Int(new(bn256.G1).ScalarMult(stealth.R, priv.Bb).String())
 

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/ecdsa"
 	"crypto/rand"
 	"email/compile/contract"
 	"email/crypto/broadcast"
@@ -9,6 +10,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/fentec-project/bn256"
 	"log"
@@ -16,7 +18,8 @@ import (
 )
 
 func main() {
-
+	ether := big.NewInt(1000000000000000000)
+	ether10 := big.NewInt(1).Mul(ether, big.NewInt(10))
 	contract_name := "Email"
 	client, err := ethclient.Dial("http://127.0.0.1:8545")
 	if err != nil {
@@ -38,11 +41,14 @@ func main() {
 		b, _ := rand.Int(rand.Reader, bn256.Order)
 		A := new(bn256.G1).ScalarBaseMult(a)
 		B := new(bn256.G1).ScalarBaseMult(b)
-		para := []interface{}{"Register", names[i], contract.EmailPK{utils.G1ToPoint(A), utils.G1ToPoint(B)}}
 		privatekey := utils.GetENV("PRIVATE_KEY_1")
-		//fmt.Println(privatekey, i%10+1)
+		key, _ := crypto.HexToECDSA(utils.ReverseString(privatekey))
+		publicKey := key.Public()
+		publicKeyECDSA, _ := publicKey.(*ecdsa.PublicKey)
+		addr := crypto.PubkeyToAddress(*publicKeyECDSA)
+		para := []interface{}{"Register", names[i], contract.EmailPK{utils.G1ToPoint(A), utils.G1ToPoint(B), ether10, addr}}
 		_ = utils.Transact(client, privatekey, big.NewInt(0), ctc, para).(*types.Receipt)
-		users[i] = utils.User{names[i], a, b, A, B, privatekey, nil}
+		users[i] = utils.User{names[i], a, b, A, B, privatekey, addr.String(), nil}
 	}
 	//users generate their BIP32 child keys
 	utils.InitBIP32Wallet(client, users)
