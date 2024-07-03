@@ -13,6 +13,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/fentec-project/bn256"
+	"io/ioutil"
 	"log"
 	"math/big"
 )
@@ -30,6 +31,8 @@ func main() {
 	deployTX := utils.Transact(client, utils.GetENV("PRIVATE_KEY_1"), big.NewInt(0), nil, nil)
 	address, _ := utils.Deploy(client, contract_name, deployTX.(*bind.TransactOpts))
 	ctc, err := contract.NewContract(common.HexToAddress(address.Hex()), client)
+
+	ioutil.WriteFile("./compile/contract/addr.txt", []byte(address.String()), 0644)
 
 	fmt.Println("=============================register personal public keys=====================")
 	//Users register their public keys (A B)
