@@ -55,8 +55,8 @@ func ReadMail(ctc *contract.Contract, my User) {
 			stealth.StealthPub{PointToG1(dayMails[i].Pub.R), PointToG1(dayMails[i].Pub.S)})
 		cid2Flag := strings.Split(cids[i], "||")
 		//fmt.Println(cid2Flag)
-		GetIPFSClient().Get(cid2Flag[0], "./"+my.Psid+"/")
-		file, _ := os.Open("./" + my.Psid + "/" + cid2Flag[0])
+		GetIPFSClient().Get(cid2Flag[0], "./users/"+my.Psid+"/")
+		file, _ := os.Open("./users/" + my.Psid + "/" + cid2Flag[0])
 		content, _ := io.ReadAll(file)
 		decRes := string(content)
 		if cid2Flag[1] == "0" {
@@ -145,12 +145,10 @@ func ResolveUser(ctc *contract.Contract, psid string, Aa *big.Int, Bb *big.Int, 
 }
 
 // created user sets the broadcast encryption keys
-func SetCreatedUser(ctc *contract.Contract, my User, created *User, clsId string) {
+func InitCreatedUser(ctc *contract.Contract, my User, created *User, clsId string) {
 	createdDomainIds, _ := ctc.GetMyDomains(&bind.CallOpts{}, created.Psid)
 	for i := 0; i < len(createdDomainIds); i++ {
-		//dmId := createdDomainIds[i]
 		dmId := createdDomainIds[i].DmId
-		//index := createdDomainIds[i].Index
 
 		pkRes, _ := ctc.GetPK(&bind.CallOpts{}, created.Psid)
 
@@ -172,9 +170,7 @@ func SetCreatedUser(ctc *contract.Contract, my User, created *User, clsId string
 		S, _ := ctc.GetS(&bind.CallOpts{}, clsId)
 		created.Domains[dmId] = Domain{brdPks, broadcast.SK{
 			int(index.Int64()) + 1, *myBrdPriv}, map[string][]uint32{clsId: S}}
-		//created.Domains[dmId] = domain
-		//created.Domains[dmId].SK.Di = *myBrdPriv
-		//return
+
 	}
 	//return broadcast.SK{}
 }
@@ -206,29 +202,38 @@ func BroadcastTo(client *ethclient.Client, ctc *contract.Contract, sender User, 
 	return cid
 }
 
-func ReadBrdMail(ctc *contract.Contract, created User, clusterId string) {
-	dmId := strings.Split(clusterId, "@")[1]
-	currentTime := time.Now()
-	timestamp := currentTime.Unix()
-	dayTS := timestamp - (timestamp % 86400)
-	//todo only one brdHdr is required for a cluster
-	cids, brdHdrs, _ := ctc.GetDailyBrdMail(&bind.CallOpts{}, clusterId, uint64(dayTS))
-	fmt.Println(cids, clusterId)
-	for i := 0; i < len(cids); i++ {
-		cid := cids[i]
-		brdHdr := brdHdrs[i]
-		hdr := broadcast.Header{PointToG1(brdHdr.C0), PointToG2(brdHdr.C0p), PointToG1(brdHdr.C1)}
-		//ptr := my.Domains[dmId].SK
-		sk := created.Domains[dmId].SK
-		beKp := sk.Decrypt(created.Domains[dmId].Clusters[clusterId], hdr, created.Domains[dmId].PKs)
-		//V := created.Domains[dmId].PKs.V
-		//fmt.Println(i, "beKp", created.Domains[dmId].Clusters[clusterId], dmId, beKp.String()[:30], V.String()[:30])
-		os.MkdirAll(created.Psid, os.ModePerm)
-		GetIPFSClient().Get(cid, "./"+created.Psid+"/")
-		file, _ := os.Open("./" + created.Psid + "/" + cid)
-		content, _ := io.ReadAll(file)
-		decRes, _ := aes.Decrypt(string(content), beKp.Marshal()[:32])
-		fmt.Println("Broadcast Email content (read):", decRes)
+func ReadBrdMail(ctc *contract.Contract, created User) {
+	DomainIds, _ := ctc.GetMyDomains(&bind.CallOpts{}, created.Psid)
+	for i := 0; i < len(DomainIds); i++ {
+		dmId := DomainIds[i].DmId
+		clsIdsDL, _ := ctc.GetMyClusters(&bind.CallOpts{}, dmId)
+		for j := 0; j < len(clsIdsDL); j++ {
+			clusterId := clsIdsDL[j]
+			//dmId := strings.Split(clusterId, "@")[1]
+			currentTime := time.Now()
+			timestamp := currentTime.Unix()
+			dayTS := timestamp - (timestamp % 86400)
+			//todo only one brdHdr is required for a cluster
+			cids, brdHdrs, _ := ctc.GetDailyBrdMail(&bind.CallOpts{}, clusterId, uint64(dayTS))
+			fmt.Println(cids, clusterId)
+			for k := 0; k < len(cids); k++ {
+				cid := cids[k]
+				brdHdr := brdHdrs[k]
+				hdr := broadcast.Header{PointToG1(brdHdr.C0), PointToG2(brdHdr.C0p), PointToG1(brdHdr.C1)}
+				//ptr := my.Domains[dmId].SK
+				sk := created.Domains[dmId].SK
+				beKp := sk.Decrypt(created.Domains[dmId].Clusters[clusterId], hdr, created.Domains[dmId].PKs)
+				//V := created.Domains[dmId].PKs.V
+				//fmt.Println(i, "beKp", created.Domains[dmId].Clusters[clusterId], dmId, beKp.String()[:30], V.String()[:30])
+				os.MkdirAll("./users/"+created.Psid, os.ModePerm)
+				GetIPFSClient().Get(cid, "./users/"+created.Psid+"/")
+				file, _ := os.Open("./users/" + created.Psid + "/" + cid)
+				content, _ := io.ReadAll(file)
+				decRes, _ := aes.Decrypt(string(content), beKp.Marshal()[:32])
+				fmt.Println("Broadcast Email content (read):", decRes)
+			}
+
+		}
 	}
 
 }
@@ -321,20 +326,6 @@ func Transact(client *ethclient.Client, privatekey string, value *big.Int, ctc *
 	//fmt.Printf("HashToG1() Gas used: %d\n", receipt.GasUsed)
 	fmt.Printf("%v Gas used: %d\n", para[0], receipt.GasUsed)
 	return receipt
-	//// 处理返回值
-	//var result int
-	//if len(resultValues) > 0 {
-	//	// 检查返回值的有效性
-	//	if resultValues[0].Kind() == reflect.Int {
-	//		result = int(resultValues[0].Int())
-	//		fmt.Println("Result:", result)
-	//	} else {
-	//		fmt.Println("Function did not return an int")
-	//	}
-	//}
-
-	//tx3, _ := fn(auth, "11223")
-	//fmt.Printf("Onchain %v result: %v\n", fn, tx3)
 
 	return auth
 }

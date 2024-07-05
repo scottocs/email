@@ -127,7 +127,6 @@ func CreateDomainUser(client *ethclient.Client, ctc *contract.Contract, from Use
 	users := make([]User, len(psids))
 
 	rand2.Seed(time.Now().Unix())
-	//fmt.Println(rand2.Int())
 	dmId := strconv.Itoa(rand2.Int())
 	brdPks, brdPrivs := broadcast.Setup(len(psids), dmId)
 	clusterId := "cls1@" + dmId

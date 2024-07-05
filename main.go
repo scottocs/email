@@ -16,6 +16,7 @@ import (
 	"io/ioutil"
 	"log"
 	"math/big"
+	"strconv"
 )
 
 func main() {
@@ -45,7 +46,7 @@ func main() {
 		b, _ := rand.Int(rand.Reader, bn256.Order)
 		A := new(bn256.G1).ScalarBaseMult(a)
 		B := new(bn256.G1).ScalarBaseMult(b)
-		privatekey := utils.GetENV("PRIVATE_KEY_1")
+		privatekey := utils.GetENV("PRIVATE_KEY_" + strconv.Itoa(i+1))
 		key, _ := crypto.HexToECDSA(utils.ReverseString(privatekey))
 		publicKey := key.Public()
 		publicKeyECDSA, _ := publicKey.(*ecdsa.PublicKey)
@@ -60,16 +61,16 @@ func main() {
 	utils.InitBIP32Wallet(client, users)
 
 	Bob := users[0]
-	Alice := users[1]
+	//Alice := users[1]
+	indexAlice := 1
+	Alice := utils.ResolveUser(ctc, "Alice", users[indexAlice].Aa, users[indexAlice].Bb, users[indexAlice].Privatekey, users[indexAlice].Addr)
 	//Bob generates Alice's Stealth address after downloading Alice's public keys
 	fmt.Println("=============================test one-to-one mailing=====================")
 	m, _ := rand.Int(rand.Reader, bn256.Order)
 	key := new(bn256.G1).ScalarBaseMult(m)
 	msg := []byte("Alice, I am inviting you to have a dinner at Jun 29, 2024 18:00. ------Bob")
 	recs := []string{names[8], names[9]} //user names to confuse others
-	//recs := []string{} //user names to confuse others
 	utils.MailTo(client, ctc, Bob, key, msg, Alice, recs)
-	//Alice downloads the encrypted email
 	utils.ReadMail(ctc, Alice)
 
 	//Bob is a domain administrator
@@ -112,19 +113,16 @@ func main() {
 
 	//Alice is a cluster and ties to read the email
 	fmt.Println("=============================read broadcasted email=====================")
-	indexAlice := 1
+	indexAlice = 1
 	Alice = utils.ResolveUser(ctc, "Alice", users[indexAlice].Aa, users[indexAlice].Bb, users[indexAlice].Privatekey, users[indexAlice].Addr)
-	utils.ReadBrdMail(ctc, Alice, clusterId)
+	utils.ReadBrdMail(ctc, Alice)
 
 	fmt.Println("=============================create domain and broadcast=====================")
 	createdUsers, createdClsId := utils.CreateDomainUser(client, ctc, Bob, []string{"Bob", "Alice", "Charlie", "Emily", "Alexander", "Sophia", "Benjamin", "Olivia", "James", "Peggy"})
-	createdBob := createdUsers[0]
-	msgCreated := []byte("Dear there, this is from the CreatedUser Bob")
-	utils.BroadcastTo(client, ctc, createdBob, msgCreated, createdClsId)
 
-	fmt.Println("=============================create domain and broadcast=====================")
-	createdUsers, createdClsId = utils.CreateDomainUser(client, ctc, Charlie, []string{"Bob", "Alice", "Charlie", "Emily", "Alexander", "Sophia", "Benjamin", "Olivia", "James", "Peggy"})
-	//createdBob := createdUsers[0]
+	msgCreated := []byte("Dear there, this is from the CreatedUser Bob")
+	utils.BroadcastTo(client, ctc, createdUsers[1], msgCreated, createdClsId)
+
 	msgCreated = []byte("Dear there, this is from the CreatedUser Charlie")
 	utils.BroadcastTo(client, ctc, createdUsers[2], msgCreated, createdClsId)
 
@@ -132,8 +130,8 @@ func main() {
 	fmt.Println("=============================createUser read broadcasted email=====================")
 	createdAlice := createdUsers[1] //TODO notify Alice about User is created
 	//createdClsId TODO download clusterId
-	utils.SetCreatedUser(ctc, Alice, &createdAlice, createdClsId)
-	utils.ReadBrdMail(ctc, createdAlice, createdClsId)
+	utils.InitCreatedUser(ctc, Alice, &createdAlice, createdClsId)
+	utils.ReadBrdMail(ctc, createdAlice)
 }
 
 //pairingRes, _ := ctc.GetPairingRes(&bind.CallOpts{})
