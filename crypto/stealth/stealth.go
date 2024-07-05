@@ -41,6 +41,7 @@ func CalculatePub(pub PublicKey) *StealthPub {
 	R := new(bn256.G1).ScalarMult(g, r)
 	//fmt.Println(g)
 	hash := Hash2Int(new(bn256.G1).ScalarMult(pub.B, r).String())
+	//fmt.Println("Aa hash", hash)
 	return &StealthPub{R,
 		new(bn256.G1).Add(pub.A, new(bn256.G1).ScalarMult(g, hash))}
 }

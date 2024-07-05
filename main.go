@@ -19,8 +19,9 @@ import (
 )
 
 func main() {
-	ether := big.NewInt(1000000000000000000)
-	ether10 := big.NewInt(1).Mul(ether, big.NewInt(10))
+	ether01 := big.NewInt(100000)
+	//ether := big.NewInt(1000000000000000000)
+	//ether10 := big.NewInt(1).Mul(ether, big.NewInt(10))
 	contract_name := "Email"
 	client, err := ethclient.Dial("http://127.0.0.1:8545")
 	if err != nil {
@@ -49,9 +50,11 @@ func main() {
 		publicKey := key.Public()
 		publicKeyECDSA, _ := publicKey.(*ecdsa.PublicKey)
 		addr := crypto.PubkeyToAddress(*publicKeyECDSA)
-		para := []interface{}{"Register", names[i], contract.EmailPK{utils.G1ToPoint(A), utils.G1ToPoint(B), ether10, addr}}
+		para := []interface{}{"Register", names[i], contract.EmailPK{utils.G1ToPoint(A), utils.G1ToPoint(B), ether01, addr, make([]contract.EmailG1Point, 0)}}
 		_ = utils.Transact(client, privatekey, big.NewInt(0), ctc, para).(*types.Receipt)
-		users[i] = utils.User{names[i], a, b, A, B, privatekey, addr.String(), nil}
+		var domains = make(map[string]utils.Domain)
+		users[i] = utils.User{names[i], a, b, A, B, privatekey, addr.String(), domains}
+		//users[i] = utils.ResolveUser(ctc, "Emily", a, b, "", "", i)
 	}
 	//users generate their BIP32 child keys
 	utils.InitBIP32Wallet(client, users)
@@ -62,8 +65,9 @@ func main() {
 	fmt.Println("=============================test one-to-one mailing=====================")
 	m, _ := rand.Int(rand.Reader, bn256.Order)
 	key := new(bn256.G1).ScalarBaseMult(m)
-	msg := []byte("Alice, I am inviting you to have a dinner at Jun 29, 2024 18:00. \nBest,\nBob")
+	msg := []byte("Alice, I am inviting you to have a dinner at Jun 29, 2024 18:00. ------Bob")
 	recs := []string{names[8], names[9]} //user names to confuse others
+	//recs := []string{} //user names to confuse others
 	utils.MailTo(client, ctc, Bob, key, msg, Alice, recs)
 	//Alice downloads the encrypted email
 	utils.ReadMail(ctc, Alice)
@@ -88,50 +92,48 @@ func main() {
 	}
 	clusterId := "computer@" + domainId
 	Charlie := users[2]
-	fmt.Println(clusterId)
+	//fmt.Println(clusterId)
 	utils.RegCluster(client, ctc, Charlie, clusterId, S)
 	//todo multiple clusters
 
 	// Emily as a member, broadcast a email
 	fmt.Println("=============================broadcast email 1=====================")
-	Emily := users[3]
-	//todo download domainId and clusterId
-	pArrEmily, qArrEmily, vEmily, _ := ctc.GetBrdPKs(&bind.CallOpts{}, domainId)
-	SEmily, _ := ctc.GetS(&bind.CallOpts{}, clusterId)
-	//fmt.Println(SEmily)
-	brdPksEmily := broadcast.PKs{utils.PointsToG1(pArrEmily), utils.PointsToG2(qArrEmily), *utils.PointToG1(vEmily), domainId}
-	brdPrivEmily := utils.DownloadAndResolvePriv(ctc, Emily, domainId)
-	Emily.Domains = map[string]utils.Domain{domainId: {brdPksEmily, brdPrivEmily, map[string][]uint32{clusterId: SEmily}}}
+	indexEmily := 3
+	Emily := utils.ResolveUser(ctc, "Emily", users[indexEmily].Aa, users[indexEmily].Bb, users[indexEmily].Privatekey, users[indexEmily].Addr)
 	msgEmily := []byte("Dear Staff, we are going to have a meeting at Jun 30, 2024 09:00 at the gym. ---Emily")
 	utils.BroadcastTo(client, ctc, Emily, msgEmily, clusterId)
 
 	// Alexander as a member, broadcast a email
 	fmt.Println("=============================broadcast email 2=====================")
-	Alexander := users[4]
-	pArrAlexander, qArrAlexander, vAlexander, _ := ctc.GetBrdPKs(&bind.CallOpts{}, domainId)
-	SAlexander, _ := ctc.GetS(&bind.CallOpts{}, clusterId)
-	//fmt.Println(SAlexander)
-	brdPksAlexander := broadcast.PKs{utils.PointsToG1(pArrAlexander), utils.PointsToG2(qArrAlexander), *utils.PointToG1(vAlexander), domainId}
-	brdPrivAlexander := utils.DownloadAndResolvePriv(ctc, Alexander, domainId)
-	Alexander.Domains = map[string]utils.Domain{domainId: {brdPksAlexander, brdPrivAlexander, map[string][]uint32{clusterId: SAlexander}}}
-	//map[string]utils.Domains{domainId:{brdPksAlice, brdPrivAlice, map[string][]uint32{clusterId: SAlice}}}
+	indexAlexander := 4
+	Alexander := utils.ResolveUser(ctc, "Alexander", users[indexAlexander].Aa, users[indexAlexander].Bb, users[indexAlexander].Privatekey, users[indexAlexander].Addr)
 	msgAlexander := []byte("Dear Staff, I am Alexander. ---Alexander")
 	utils.BroadcastTo(client, ctc, Alexander, msgAlexander, clusterId)
 
 	//Alice is a cluster and ties to read the email
 	fmt.Println("=============================read broadcasted email=====================")
-	Alice = users[1]
-	domainIds, _ := ctc.GetMyDomains(&bind.CallOpts{}, Alice.Psid)
-
-	for i := 0; i < len(domainIds); i++ {
-		SAlice, _ := ctc.GetS(&bind.CallOpts{}, clusterId)
-		pArrAlice, qArrAlice, vAlice, _ := ctc.GetBrdPKs(&bind.CallOpts{}, domainIds[i])
-		brdPksAlice := broadcast.PKs{utils.PointsToG1(pArrAlice), utils.PointsToG2(qArrAlice), *utils.PointToG1(vAlice), domainIds[i]}
-		brdPrivAlice := utils.DownloadAndResolvePriv(ctc, Alice, domainIds[i])
-		//fmt.Println(i, "brdPrivAlice", brdPrivAlice.Di.String()[:30])
-		Alice.Domains = map[string]utils.Domain{domainId: {brdPksAlice, brdPrivAlice, map[string][]uint32{clusterId: SAlice}}}
-	}
+	indexAlice := 1
+	Alice = utils.ResolveUser(ctc, "Alice", users[indexAlice].Aa, users[indexAlice].Bb, users[indexAlice].Privatekey, users[indexAlice].Addr)
 	utils.ReadBrdMail(ctc, Alice, clusterId)
+
+	fmt.Println("=============================create domain and broadcast=====================")
+	createdUsers, createdClsId := utils.CreateDomainUser(client, ctc, Bob, []string{"Bob", "Alice", "Charlie", "Emily", "Alexander", "Sophia", "Benjamin", "Olivia", "James", "Peggy"})
+	createdBob := createdUsers[0]
+	msgCreated := []byte("Dear there, this is from the CreatedUser Bob")
+	utils.BroadcastTo(client, ctc, createdBob, msgCreated, createdClsId)
+
+	fmt.Println("=============================create domain and broadcast=====================")
+	createdUsers, createdClsId = utils.CreateDomainUser(client, ctc, Charlie, []string{"Bob", "Alice", "Charlie", "Emily", "Alexander", "Sophia", "Benjamin", "Olivia", "James", "Peggy"})
+	//createdBob := createdUsers[0]
+	msgCreated = []byte("Dear there, this is from the CreatedUser Charlie")
+	utils.BroadcastTo(client, ctc, createdUsers[2], msgCreated, createdClsId)
+
+	//Alice is a cluster and ties to read the email
+	fmt.Println("=============================createUser read broadcasted email=====================")
+	createdAlice := createdUsers[1] //TODO notify Alice about User is created
+	//createdClsId TODO download clusterId
+	utils.SetCreatedUser(ctc, Alice, &createdAlice, createdClsId)
+	utils.ReadBrdMail(ctc, createdAlice, createdClsId)
 }
 
 //pairingRes, _ := ctc.GetPairingRes(&bind.CallOpts{})

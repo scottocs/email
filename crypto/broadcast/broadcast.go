@@ -10,10 +10,10 @@ import (
 )
 
 type PKs struct {
-	PArr  []bn256.G1 `json:"g1"`
-	QArr  []bn256.G2 `json:"g2"`
-	V     bn256.G1   `json:"v"`
-	GrpId string     `json:"grpId"`
+	PArr []bn256.G1 `json:"g1"`
+	QArr []bn256.G2 `json:"g2"`
+	V    bn256.G1   `json:"v"`
+	DmId string     `json:"grpId"`
 }
 
 func (c *PKs) MarshalJSON() ([]byte, error) {
@@ -30,24 +30,24 @@ func (c *PKs) MarshalJSON() ([]byte, error) {
 	v := fmt.Sprintf("%x", c.V.Marshal())
 
 	return json.Marshal(&struct {
-		G1    []string `json:"g1"`
-		G2    []string `json:"g2"`
-		V     string   `json:"v"`
-		grpId string   `json:"grpId"`
+		G1   []string `json:"g1"`
+		G2   []string `json:"g2"`
+		V    string   `json:"v"`
+		dmId string   `json:"dmId"`
 	}{
-		G1:    pArr,
-		G2:    qArr,
-		V:     v,
-		grpId: c.GrpId,
+		G1:   pArr,
+		G2:   qArr,
+		V:    v,
+		dmId: c.DmId,
 	})
 }
 
 func (c *PKs) UnmarshalJSON(data []byte) error {
 	var aux struct {
-		G1    []string `json:"g1"`
-		G2    []string `json:"g2"`
-		V     string   `json:"v"`
-		GrpId string   `json:"grpId"`
+		G1   []string `json:"g1"`
+		G2   []string `json:"g2"`
+		V    string   `json:"v"`
+		DmId string   `json:"dmId"`
 	}
 
 	if err := json.Unmarshal(data, &aux); err != nil {
@@ -87,7 +87,7 @@ func (c *PKs) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	c.GrpId = aux.GrpId
+	c.DmId = aux.DmId
 
 	return nil
 }
@@ -116,7 +116,7 @@ type SK struct {
 	Di bn256.G1
 }
 
-func Setup(n int, grpId string) (PKs, []SK) {
+func Setup(n int, dmId string) (PKs, []SK) {
 	r := rand.Reader
 	//_, P, _ := bn256.RandomG1(r)
 	//_, Q, _ := bn256.RandomG2(r)
@@ -156,10 +156,10 @@ func Setup(n int, grpId string) (PKs, []SK) {
 	}
 
 	return PKs{
-		PArr:  PArr,
-		QArr:  QArr,
-		V:     *V,
-		GrpId: grpId,
+		PArr: PArr,
+		QArr: QArr,
+		V:    *V,
+		DmId: dmId,
 	}, privateKeys
 }
 
@@ -172,6 +172,7 @@ func (cpk *PKs) buildClusterPK(S []uint32) *bn256.G1 {
 	//fmt.Println(pk)
 	return pk
 }
+
 func (cpk *PKs) Encrypt(S []uint32) (Header, *bn256.GT) {
 	clusterPK := cpk.buildClusterPK(S)
 	t, _ := rand.Int(rand.Reader, bn256.Order)

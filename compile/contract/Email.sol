@@ -16,16 +16,7 @@ contract Email {
 	// a = (p+1) / 4
 	uint256 constant CURVE_A = 0xc19139cb84c680a6e14116da060561765e05aa45a1c72a34f082305b61f3f52;
 
-	struct G1Point {
-		uint X;
-		uint Y;
-	}
-
-	// Encoding of field elements is: X[0] * z + X[1]
-	struct G2Point {
-		uint[2] X;
-		uint[2] Y;
-	}
+	
 	G1Point G1 = G1Point(1, 2);
     G2Point G2 = G2Point(
         [11559732032986387107991004021392285783925812861821192530917403151452391805634,
@@ -190,66 +181,101 @@ contract Email {
 	mapping(string => PK) public psid2PK;
 	mapping(string => mapping(uint64 => string[])) public psid2Day2Cid;
 	mapping(string => Mail) public cid2Mail;
+	mapping(string => uint256) public cid2Money;
 	mapping(string => BrdcastHeader) public cid2BrdcMails;
 	mapping(string => Domain) public dmId2Domain;
 	mapping(string => uint32[]) public clsId2S;
-	mapping(string => string[] ) public psid2GrpIds;
+	mapping(string => DomainId[]) public psid2DmIds;
+	mapping(string => string[]) public dm2ClsIds;
 	mapping(string => mapping(uint64 => string[])) public clsId2Day2Cid;
+
+	struct G1Point {
+		uint X; // x-coordinate of point in bn128 G1
+		uint Y; // y-coordinate of point in bn128 G1
+	}
+	struct G2Point {
+		uint[2] X; // x-coordinate of point in bn128 G2
+		uint[2] Y; // y-coordinate of point in bn128 G2
+	}
+	struct PK {
+		G1Point A;// used in stealth address generation, A= g^a
+		G1Point B;// used in stealth address generation, B= g^b
+		uint256 fee;// requested minimal fee when receiving an email
+        // An address used in receiving digital currency and it does not link to (a,b)
+		address payable wallet;
+		G1Point[] extra;// stores the stealth address information when the PK is created by others
+	}
+	struct StealthPub{
+		G1Point R; // stealth address used for verification, R =g^r
+		G1Point S; // stealth address and the private key s = a+ H(R^b)
+	}
+	struct ElGamalCT{
+		G1Point C1; // the first part of ElGamal ciphertext
+		G1Point C2; // the second part of ElGamal ciphertext
+	}
+	struct Mail{
+		StealthPub pub;	// the receiver's stealth address
+		ElGamalCT ct;  //ElGamal-encrypted random key {g_i^key}
+	}
+
+    struct Domain {
+		G1Point[] pArr; // (g,g_1,...,g_n,g, g_{n+2},...,g_{2n}) and g is generator of bn128 G1
+		G2Point[] qArr; // (h,h_1,...,h_n,h, h_{n+2},...,h_{2n}) and h is generator of bn128 G2
+		G1Point v; // g^\gamma
+		ElGamalCT[] privC;// ElGamal-encrypted private keys {g_i^\gamma}
+		string[] psids; // the pseudonyms of each member in the domain
+	}
+	struct DomainId {
+		uint index; // the index in the domain
+		string dmId;// the domain id
+	}
+	struct BrdcastHeader {
+		G1Point C0; // C0 of BE header
+		G1Point C1; // C1 of BE header
+		G2Point C0p;// identical C0, but the base is h of G2
+	}
+	struct ClusterProof{
+		G1Point skipows; // ski^s, where ski is BE private key and s is a random value
+		G2Point pki; // pki, the ith BE public key
+		G1Point vpows;// v^s, with the same exponentiation with skipows
+	}
 
 	bool public pairingRes;
 
-	struct PK {
-		G1Point A;
-		G1Point B;
-		// todo requested minimal value
-		uint256 M;
-		address payable Wallet;
-	}
-	struct StealthPub{
-		G1Point R;
-		G1Point S;
-	}
-	struct Domain {
-		G1Point[] pArr;
-		G2Point[] qArr;
-		G1Point v;
-		G1Point[] privC1;
-		G1Point[] privC2;
-		string[] psids;
-	}
+	uint256 constant MIN_FEE = 60000;//about $1, with 1ETH=3000$ and gas price = 5Gwei
+	// uint256 constant MAX_FEE = 6000000;//about $100, with 1ETH=3000$ and gas price = 5Gwei
+	// uint256 constant LOCK_PERIOD = 1 days;
 
-	struct BrdcastHeader {
-		G1Point C0;
-		G1Point C1;
-		G2Point C0p;
-	}
-	struct ElGamalCT{
-		G1Point C1;
-		G1Point C2;
-	}
-	struct ClusterProof{
-		G1Point skipows;
-		G2Point pki;
-		G1Point vpows;
-	}
-	struct Mail{
-		StealthPub pub;		
-		ElGamalCT ct;
-	}
+	// struct Deposit {
+    //     mapping(address => uint32) deposits;
+    //     uint32 unlockTime;
+    // }
+
+    // mapping(string => Deposit) public cid2Deposit;
 
 	function register(string memory psid, PK memory pk) public payable returns (PK memory)  {
 		require(psid2PK[psid].A.X == 0, "psid exists.");
 
 		if (psid2PK[psid].A.X == 0) {
-			psid2PK[psid] = pk;
+			psid2PK[psid].A = pk.A;
+			psid2PK[psid].B = pk.B;
+			psid2PK[psid].fee = pk.fee;
+			psid2PK[psid].wallet = pk.wallet;
+			for (uint i = 0; i < pk.extra.length; i++) {
+				psid2PK[psid].extra.push(G1Point(pk.extra[i].X,pk.extra[i].Y));
+			}
+			
 		}
 		return psid2PK[psid];
 	}
-	function downloadPK(string memory psid) public view returns (PK memory) {
+	function getPK(string memory psid) public view returns (PK memory) {
 		return psid2PK[psid];
 	}
+	event Event(string eventName,string cid, address indexed sender, uint256 value, string[] extra);
+    // event Event(string eventName, uint256 gasUsed, string[] extra);
 	
 	function mailTo(Mail memory mail, string memory cid, string[] memory psids) public payable {
+		// uint256 gasAtStart = gasleft();
 		cid2Mail[cid]=mail;
 		uint64 currentTime = uint64(block.timestamp);
 		uint64 day = currentTime - (currentTime % 86400);
@@ -257,11 +283,19 @@ contract Email {
 		for (uint i = 0; i < psids.length; i++) {
 			psid2Day2Cid[psids[i]][day].push(cid);	
 			// todo transfer money to each user
-			// address payable wallet = psid2PK[psids[i]].Wallet;
-			// require(msg.value > psid2PK[psids[i]].M, "Amount must be greater than zero");     
-			// wallet.transfer(psid2PK[psids[i]].M);
+			address payable wallet = psid2PK[psids[i]].wallet;
+			uint256 actualValue = psid2PK[psids[i]].fee;
+			if (actualValue < MIN_FEE){
+				actualValue = MIN_FEE;
+			}
+			require(msg.value > actualValue, "Amount must be greater than zero");     
+			wallet.transfer(actualValue);
 		}
+		// uint256 gasUsed = gasAtStart - gasleft(); // 计算消耗的 gas 量
+
 		//TODO	emit event
+		emit Event("mailTo", cid, msg.sender, msg.value, psids);
+
 	}
 
 	function getDailyMail(string memory psid, uint64 day) public view returns (string[] memory, Mail[] memory) {
@@ -273,24 +307,6 @@ contract Email {
 		return (cids, mails);
 	}
 
-	function regDomain(string memory dmId, G1Point[] memory pArr, G2Point[] memory qArr, G1Point memory v,G1Point[] memory privC1, G1Point[] memory privC2, string[] memory psids) public payable {
-//		DomainParams storage dm = ;
-		dmId2Domain[dmId].v=G1Point(v.X,v.Y);
-		for (uint i = 0; i < qArr.length; i++) {//n+1
-			dmId2Domain[dmId].qArr.push(G2Point(qArr[i].X,qArr[i].Y));
-		}
-		for (uint i = 0; i < pArr.length; i++) {//2n+1
-			dmId2Domain[dmId].pArr.push(G1Point(pArr[i].X,pArr[i].Y));
-		}
-		for (uint i = 0; i < privC1.length; i++) {//n
-			dmId2Domain[dmId].privC1.push(G1Point(privC1[i].X,privC1[i].Y));
-			dmId2Domain[dmId].privC2.push(G1Point(privC2[i].X,privC2[i].Y));
-			dmId2Domain[dmId].psids.push(psids[i]);
-			psid2GrpIds[psids[i]].push(dmId);
-		}
-	}
-
-	// string[] public str;
 	function splitAt(string memory _str) public view returns (string[] memory){
 		bytes memory sbt = bytes(_str);
 		string[] memory res = new string[](2);
@@ -315,16 +331,32 @@ contract Email {
 		res[1]=string(right);
 		return res;
 	}
-	// function downloadSplit(string memory clsId) public view returns (string[] memory) {
-	// 	return str;
-	// }
+
+	function regDomain(string memory dmId, G1Point[] memory pArr, G2Point[] memory qArr, G1Point memory v, ElGamalCT[] memory privC, string[] memory psids) public payable {
+		// G1Point[] memory privC1, G1Point[] memory privC2
+		dmId2Domain[dmId].v=G1Point(v.X,v.Y);
+		for (uint i = 0; i < qArr.length; i++) {//n+1
+			dmId2Domain[dmId].qArr.push(G2Point(qArr[i].X,qArr[i].Y));
+		}
+		for (uint i = 0; i < pArr.length; i++) {//2n+1
+			dmId2Domain[dmId].pArr.push(G1Point(pArr[i].X,pArr[i].Y));
+		}
+		for (uint i = 0; i < privC.length; i++) {//n
+			dmId2Domain[dmId].privC.push(ElGamalCT(G1Point(privC[i].C1.X,privC[i].C1.Y), G1Point(privC[i].C2.X,privC[i].C2.Y)));
+			// dmId2Domain[dmId].privC2.push());
+			dmId2Domain[dmId].psids.push(psids[i]);
+			psid2DmIds[psids[i]].push(DomainId(i+1,dmId));
+		}
+	}
+
+	
 	function regCluster(string memory clsId, uint32[] memory S) public payable {
 		string[] memory parts = splitAt(clsId);
 		Domain memory dm = dmId2Domain[parts[1]];
 		if (dm.pArr.length > 0){//cluster should be built when a dm exists
 			clsId2S[clsId]= S;
+			dm2ClsIds[parts[1]].push(clsId);
 		}
-
 	}
 	function getS(string memory clsId) public view returns (uint32[] memory) {
 		string[] memory parts = splitAt(clsId);		
@@ -332,28 +364,23 @@ contract Email {
 		return clsId2S[clsId];
 	}
 
-	function retrBrdPrivs(string memory dmId,string memory name) public view returns (uint, G1Point memory,G1Point memory) {
-		G1Point memory c1;
-		G1Point memory c2;
+	function getBrdEncPrivs(string memory dmId,string memory name) public view returns (uint, ElGamalCT memory) {
+		ElGamalCT memory ct;
 		uint index;
-		for (uint i = 0; i < dmId2Domain[dmId].privC1.length; i++) {
+		for (uint i = 0; i < dmId2Domain[dmId].privC.length; i++) {
 			string memory nameBC = dmId2Domain[dmId].psids[i];
 			if(keccak256(abi.encodePacked(nameBC)) == keccak256(abi.encodePacked(name))){
-				c1= dmId2Domain[dmId].privC1[i];
-				c2= dmId2Domain[dmId].privC2[i];
+				ct = dmId2Domain[dmId].privC[i];
 				index=i;
 				break;
 			}
 		}
-		return (index,c1, c2);
+		return (index,ct);
 	}
 	function getBrdPKs(string memory dmId) public view returns (G1Point[] memory,G2Point[] memory, G1Point memory) {
 		return (dmId2Domain[dmId].pArr, dmId2Domain[dmId].qArr, dmId2Domain[dmId].v);
 	}
-	// function DownloadClusterPK(string memory dmId) public view returns (G1Point[] memory,G2Point[] memory, G1Point memory) {
-	// 	return (dmId2Domain[dmId].pArr, dmId2Domain[dmId].qArr, dmId2Domain[dmId].v);
-	// }
-
+	
 	function bcstTo(BrdcastHeader memory hdr, string memory clsId, ClusterProof memory proof, string memory cid) public payable returns (bool)  {
 		// todo anonymoty of senders
 		// todo send money
@@ -370,11 +397,13 @@ contract Email {
 			uint64 day = currentTime - (currentTime % 86400);
 			cid2BrdcMails[cid] = hdr;
 			clsId2Day2Cid[clsId][day].push(cid);
+			//TODO	emit event
+			emit Event("bcstTo", cid, msg.sender, msg.value, new string[](0));
 			return true;
 		}else{
 			return false;
 		}
-		//TODO	emit event
+		
 	}
 
 	function getDailyBrdMail(string memory clsId, uint64 day) public view returns (string[] memory, BrdcastHeader[] memory) {
@@ -393,8 +422,12 @@ contract Email {
 
 	
 
-	function getMyDomains(string memory psid) public view returns (string[] memory) {
-		return psid2GrpIds[psid];
+	function getMyDomains(string memory psid) public view returns (DomainId[] memory) {
+		return psid2DmIds[psid];
+	}
+
+	function getMyClusters(string memory dmId) public view returns (string[] memory) {
+		return dm2ClsIds[dmId];
 	}
 
 
