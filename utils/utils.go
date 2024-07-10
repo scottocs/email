@@ -4,7 +4,6 @@ package utils
 import (
 	"context"
 	"crypto/ecdsa"
-	"crypto/sha256"
 	"email/compile/contract"
 	"email/crypto/broadcast"
 	"email/crypto/stealth"
@@ -18,14 +17,16 @@ import (
 	"github.com/fentec-project/bn256"
 	"github.com/joho/godotenv"
 	"github.com/tyler-smith/go-bip32"
-	"golang.org/x/crypto/ripemd160"
 	"golang.org/x/crypto/sha3"
+	"golang.org/x/exp/rand"
 	"log"
 	"math/big"
 	rand2 "math/rand"
 	"os"
+	"path/filepath"
 	"strconv"
 	"time"
+	"unicode"
 )
 
 func InitBIP32Wallet(client *ethclient.Client, users []User) {
@@ -94,11 +95,29 @@ func ReverseString(input string) string {
 }
 
 func GetENV(key string) string {
-	err := godotenv.Load(".env")
+	dir, _ := os.Getwd()
+	err := godotenv.Load(findEnvFile(dir))
 	if err != nil {
 		log.Fatalf("Some error occured. Err: %s", err)
 	}
 	return os.Getenv(key)
+}
+
+func findEnvFile(startDir string) string {
+	currentDir := startDir
+	for {
+		envPath := filepath.Join(currentDir, ".env")
+		if _, err := os.Stat(envPath); err == nil {
+			return envPath
+		}
+
+		parentDir := filepath.Dir(currentDir)
+		if parentDir == currentDir {
+			break
+		}
+		currentDir = parentDir
+	}
+	return ""
 }
 
 func Hash2G1(msg string) *bn256.G1 {
@@ -114,56 +133,77 @@ func Hash2G1(msg string) *bn256.G1 {
 //		v := hash.Sum(nil)
 //		return hex.Encode(v)
 //	}
-func calculateBN128Wallet(p *bn256.G1) string {
-	walletPK := G1ToPoint(p)
-	pubKeyBytes := append(walletPK.X.Bytes(), walletPK.Y.Bytes()...)
-	sha256Hash := sha256.Sum256(pubKeyBytes)
-	ripemd160Hasher := ripemd160.New()
-	ripemd160Hasher.Write(sha256Hash[:])
-	addr := hex.EncodeToString(ripemd160Hasher.Sum(nil))
-	return addr
+func shuffle(arr []uint32) {
+	rand.Seed(uint64(time.Now().UnixNano()))
+	rand.Shuffle(len(arr), func(i, j int) {
+		arr[i], arr[j] = arr[j], arr[i]
+	})
 }
-func CreateDomainUser(client *ethclient.Client, ctc *contract.Contract, from User, psids []string) ([]User, string) {
+
+func isPrintable(s string) bool {
+	for _, r := range s {
+		if !unicode.IsPrint(r) {
+			return false
+		}
+	}
+	return true
+}
+
+func CreateTempCluster(client *ethclient.Client, ctc *contract.Contract, from User, psids []string) ([]User, string) {
 	users := make([]User, len(psids))
 
 	rand2.Seed(time.Now().Unix())
 	dmId := strconv.Itoa(rand2.Int())
 	brdPks, brdPrivs := broadcast.Setup(len(psids), dmId)
-	clusterId := "cls1@" + dmId
+	clusterId := "tmp@" + dmId
 	//fmt.Println(rand2.Int(), clusterId, dmId)
-	S := make([]uint32, len(psids))
-	for i := 0; i < len(psids); i++ {
-		S[i] = uint32(i) + 1
+	ClS := make([]uint32, len(psids))
+	for i := 0; i < len(ClS); i++ {
+		ClS[i] = uint32(i) + 1
 	}
+	//construct cluster from the provided psids
+	shuffle(ClS)
+	ClS = ClS[0 : len(ClS)/2]
+
 	for i := 0; i < len(psids); i++ {
-		//S[i] = uint32(i) + 1
+		//ClS[i] = uint32(i) + 1
 		pkRes, _ := ctc.GetPK(&bind.CallOpts{}, psids[i])
 		sa1 := stealth.CalculatePub(stealth.PublicKey{PointToG1(pkRes.A), PointToG1(pkRes.B)}) //A
 		sa2 := stealth.CalculatePub(stealth.PublicKey{PointToG1(pkRes.A), PointToG1(pkRes.B)}) //B
-		sa3 := stealth.CalculatePub(stealth.PublicKey{PointToG1(pkRes.A), PointToG1(pkRes.B)}) //wallet
 
 		//todo sa3 is on bn128
 		var domain = make(map[string]Domain)
 		//map[string][]uint32{clusterId: SEmily}
 		var Smap = make(map[string][]uint32)
-		Smap[clusterId] = S
+		Smap[clusterId] = ClS
 		domain[dmId] = Domain{brdPks, brdPrivs[i+1], Smap}
 
-		psid := "psid" + strconv.Itoa(i) + "@" + clusterId
+		tmpPsid := psids[i] + "@" + clusterId
 		privateKey := from.Privatekey //TODO Alice is user creator?
 
-		users[i] = User{psid, nil, nil, sa1.S, sa2.S, privateKey,
-			calculateBN128Wallet(sa3.S), domain}
+		users[i] = User{tmpPsid, nil, nil, sa1.S, sa2.S, privateKey, "", domain}
 		//fmt.Println("11111111", clusterId, dmId, users[i].Domains[dmId].Clusters[clusterId])
 		//ptr := users[i].Domains[dmId].SK.Di
 		addr := common.BytesToAddress(([]byte)(users[i].Addr))
-		para := []interface{}{"Register", psid, contract.EmailPK{G1ToPoint(sa1.S), G1ToPoint(sa2.S),
+		para := []interface{}{"Register", tmpPsid, contract.EmailPK{G1ToPoint(sa1.S), G1ToPoint(sa2.S),
 			big.NewInt(0), addr, []contract.EmailG1Point{G1ToPoint(sa1.R), G1ToPoint(sa2.R)}}}
-
 		_ = Transact(client, from.Privatekey, big.NewInt(0), ctc, para).(*types.Receipt)
+
+		para2 := []interface{}{"LinkTmpPsid", psids[i], tmpPsid}
+		_ = Transact(client, from.Privatekey, big.NewInt(0), ctc, para2).(*types.Receipt)
 	}
+
 	//ptr := users[0].Domains[dmId].SK.Di
 	RegDomain(client, ctc, from, brdPks, brdPrivs, users)
-	RegCluster(client, ctc, from, clusterId, S)
+	RegCluster(client, ctc, from, clusterId, ClS)
+	//i := 0
+	//for i = 0; i < len(ClS); i++ {
+	//	if psids[ClS[i]-1] == "Alice" {
+	//		fmt.Println("Alice is in the cluster: " + clusterId + " She is a receiver.")
+	//		return users, clusterId
+	//	}
+	//}
+	//fmt.Println("Alice is NOT in the cluster: " + clusterId + " She is NOT a receiver.")
 	return users, clusterId
+
 }

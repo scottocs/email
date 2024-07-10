@@ -40,8 +40,8 @@ class MyHandler(FileSystemEventHandler):
                 result = self.message_event.processReceipt(receipt)
                 
                 obj=result[0].args
-                res="event:"+obj.eventName+", sender"+obj.sender+", value:"+str(obj.value)+", cid:"+obj.cid+", extra:"+str(obj.extra)+"\n"
-                print("new event ", res)
+                res="event:"+obj.eventName+", sender:"+obj.sender+", value:"+str(obj.value)+", cid/psid:"+obj.fid+", extra:"+str(obj.extra)+"\n"
+                print(res)
             time.sleep(1)
         
 

@@ -178,6 +178,33 @@ contract Email {
 	) private pure returns(bool same) {
 		return keccak256(a) == keccak256(b);
 	}
+
+
+	function splitAt(string memory _str) public view returns (string[] memory){
+		bytes memory sbt = bytes(_str);
+		string[] memory res = new string[](2);
+		uint len = 0;
+		for (uint i = 0; i < sbt.length; i++) {
+			if(bytes1('@')==sbt[i]){
+				len = i;
+				break;
+			}
+		}
+		bytes memory left = new bytes(len);
+		bytes memory right = new bytes(sbt.length - len-1);
+		for (uint i = 0; i < sbt.length; i++) {
+			if( i< len){
+				left[i] = sbt[i];
+			}
+			if (i> len){
+				right[i-len-1] = sbt[i];
+			}
+		}
+		res[0]=string(left);
+		res[1]=string(right);
+		return res;
+	}
+	
 	mapping(string => PK) public psid2PK;
 	mapping(string => mapping(uint64 => string[])) public psid2Day2Cid;
 	mapping(string => Mail) public cid2Mail;
@@ -187,6 +214,7 @@ contract Email {
 	mapping(string => uint32[]) public clsId2S;
 	mapping(string => DomainId[]) public psid2DmIds;
 	mapping(string => string[]) public dm2ClsIds;
+	mapping(string => string[]) public psid2TmpPsid;
 	mapping(string => mapping(uint64 => string[])) public clsId2Day2Cid;
 
 	struct G1Point {
@@ -219,8 +247,8 @@ contract Email {
 	}
 
     struct Domain {
-		G1Point[] pArr; // (g,g_1,...,g_n,g, g_{n+2},...,g_{2n}) and g is generator of bn128 G1
-		G2Point[] qArr; // (h,h_1,...,h_n,h, h_{n+2},...,h_{2n}) and h is generator of bn128 G2
+		G1Point[] pArr; // (g,g_1,...,g_n, g_{n+2},...,g_{2n}) and g is bn128 G1 generator 
+		G2Point[] qArr; // (h,h_1,...,h_n, h_{n+2},...,h_{2n}) and h is bn128 G2 generator 
 		G1Point v; // g^\gamma
 		ElGamalCT[] privC;// ElGamal-encrypted private keys {g_i^\gamma}
 		string[] psids; // the pseudonyms of each member in the domain
@@ -271,8 +299,9 @@ contract Email {
 	function getPK(string memory psid) public view returns (PK memory) {
 		return psid2PK[psid];
 	}
-	event Event(string eventName,string cid, address indexed sender, uint256 value, string[] extra);
-    // event Event(string eventName, uint256 gasUsed, string[] extra);
+	
+	event Event(string eventName, address indexed sender, uint256 value, string fid, string[] extra);
+    // event Event(string eventName, uint256 gasUsed, string[] memory extra);
 	
 	function mailTo(Mail memory mail, string memory cid, string[] memory psids) public payable {
 		// uint256 gasAtStart = gasleft();
@@ -291,10 +320,8 @@ contract Email {
 			require(msg.value > actualValue, "Amount must be greater than zero");     
 			wallet.transfer(actualValue);
 		}
-		// uint256 gasUsed = gasAtStart - gasleft(); // 计算消耗的 gas 量
-
-		//TODO	emit event
-		emit Event("mailTo", cid, msg.sender, msg.value, psids);
+		// uint256 gasUsed = gasAtStart - gasleft(); // 计算消耗的 gas 量		
+		emit Event("mailTo", msg.sender, msg.value, cid,psids);
 
 	}
 
@@ -307,29 +334,15 @@ contract Email {
 		return (cids, mails);
 	}
 
-	function splitAt(string memory _str) public view returns (string[] memory){
-		bytes memory sbt = bytes(_str);
-		string[] memory res = new string[](2);
-		uint len = 0;
-		for (uint i = 0; i < sbt.length; i++) {
-			if(bytes1('@')==sbt[i]){
-				len = i;
-				break;
-			}
-		}
-		bytes memory left = new bytes(len);
-		bytes memory right = new bytes(sbt.length - len-1);
-		for (uint i = 0; i < sbt.length; i++) {
-			if( i< len){
-				left[i] = sbt[i];
-			}
-			if (i> len){
-				right[i-len-1] = sbt[i];
-			}
-		}
-		res[0]=string(left);
-		res[1]=string(right);
-		return res;
+	function linkTmpPsid(string memory psid, string memory tmpPsid) public payable {
+		psid2TmpPsid[psid].push(tmpPsid);
+		string[] memory extra = new string[](1);
+		extra[0] = tmpPsid;
+		emit Event("linkTo", msg.sender, msg.value, psid, extra);
+	}
+
+	function getTmpPsid(string memory psid) public view returns (string[] memory) {
+		return psid2TmpPsid[psid];
 	}
 
 	function regDomain(string memory dmId, G1Point[] memory pArr, G2Point[] memory qArr, G1Point memory v, ElGamalCT[] memory privC, string[] memory psids) public payable {
@@ -349,7 +362,8 @@ contract Email {
 		}
 	}
 
-	
+		
+
 	function regCluster(string memory clsId, uint32[] memory S) public payable {
 		string[] memory parts = splitAt(clsId);
 		Domain memory dm = dmId2Domain[parts[1]];
@@ -398,7 +412,7 @@ contract Email {
 			cid2BrdcMails[cid] = hdr;
 			clsId2Day2Cid[clsId][day].push(cid);
 			//TODO	emit event
-			emit Event("bcstTo", cid, msg.sender, msg.value, new string[](0));
+			emit Event("bcstTo", msg.sender, msg.value, cid, new string[](0));
 			return true;
 		}else{
 			return false;
