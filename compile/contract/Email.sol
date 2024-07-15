@@ -209,7 +209,7 @@ contract Email {
 	mapping(string => mapping(uint64 => string[])) public psid2Day2Cid;
 	mapping(string => Mail) public cid2Mail;
 	mapping(string => uint256) public cid2Money;
-	mapping(string => BrdcastHeader) public cid2BrdcMails;
+	mapping(string => BcstHeader) public cid2BcstMails;
 	mapping(string => Domain) public dmId2Domain;
 	mapping(string => uint32[]) public clsId2S;
 	mapping(string => DomainId[]) public psid2DmIds;
@@ -257,7 +257,7 @@ contract Email {
 		uint index; // the index in the domain
 		string dmId;// the domain id
 	}
-	struct BrdcastHeader {
+	struct BcstHeader {
 		G1Point C0; // C0 of BE header
 		G1Point C1; // C1 of BE header
 		G2Point C0p;// identical C0, but the base is h of G2
@@ -363,7 +363,7 @@ contract Email {
 	}
 
 		
-
+	// TODO examine whether the sender is a domain member
 	function regCluster(string memory clsId, uint32[] memory S) public payable {
 		string[] memory parts = splitAt(clsId);
 		Domain memory dm = dmId2Domain[parts[1]];
@@ -378,12 +378,12 @@ contract Email {
 		return clsId2S[clsId];
 	}
 
-	function getBrdEncPrivs(string memory dmId,string memory name) public view returns (uint, ElGamalCT memory) {
+	function getBrdEncPrivs(string memory dmId,string memory psid) public view returns (uint, ElGamalCT memory) {
 		ElGamalCT memory ct;
 		uint index;
 		for (uint i = 0; i < dmId2Domain[dmId].privC.length; i++) {
-			string memory nameBC = dmId2Domain[dmId].psids[i];
-			if(keccak256(abi.encodePacked(nameBC)) == keccak256(abi.encodePacked(name))){
+			string memory psidBC = dmId2Domain[dmId].psids[i];
+			if(keccak256(abi.encodePacked(psidBC)) == keccak256(abi.encodePacked(psid))){
 				ct = dmId2Domain[dmId].privC[i];
 				index=i;
 				break;
@@ -395,7 +395,7 @@ contract Email {
 		return (dmId2Domain[dmId].pArr, dmId2Domain[dmId].qArr, dmId2Domain[dmId].v);
 	}
 	
-	function bcstTo(BrdcastHeader memory hdr, string memory clsId, ClusterProof memory proof, string memory cid) public payable returns (bool)  {
+	function bcstTo(BcstHeader memory hdr, string memory clsId, ClusterProof memory proof, string memory cid) public payable returns (bool)  {
 		// todo anonymoty of senders
 		// todo send money
 		G1Point[] memory p1Arr = new G1Point[](2);
@@ -409,7 +409,7 @@ contract Email {
 			// pairingRes= true;//cost ~20000 gas	
 			uint64 currentTime = uint64(block.timestamp);
 			uint64 day = currentTime - (currentTime % 86400);
-			cid2BrdcMails[cid] = hdr;
+			cid2BcstMails[cid] = hdr;
 			clsId2Day2Cid[clsId][day].push(cid);
 			//TODO	emit event
 			emit Event("bcstTo", msg.sender, msg.value, cid, new string[](0));
@@ -420,11 +420,11 @@ contract Email {
 		
 	}
 
-	function getDailyBrdMail(string memory clsId, uint64 day) public view returns (string[] memory, BrdcastHeader[] memory) {
+	function getDailyBrdMail(string memory clsId, uint64 day) public view returns (string[] memory, BcstHeader[] memory) {
 		string[] memory cids = clsId2Day2Cid[clsId][day];
-		BrdcastHeader[] memory mails = new BrdcastHeader[](cids.length);
+		BcstHeader[] memory mails = new BcstHeader[](cids.length);
 		for (uint i = 0; i < cids.length; i++) {
-			mails[i]=cid2BrdcMails[cids[i]];
+			mails[i]=cid2BcstMails[cids[i]];
 		}
 		return (cids, mails);
 	}
