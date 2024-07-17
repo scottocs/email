@@ -44,73 +44,6 @@ contract Email {
 		return G1Point(1, 2);
 	}
 
-    // a - b = c;
-    function submod(uint a, uint b) internal pure returns (uint){
-        uint a_nn;
-
-        if(a>b) {
-            a_nn = a;
-        } else {
-            a_nn = a+GEN_ORDER;
-        }
-
-        return addmod(a_nn - b, 0, GEN_ORDER);
-    }
-
-
-    function expMod(uint256 _base, uint256 _exponent, uint256 _modulus)
-        internal view returns (uint256 retval)
-    {
-        bool success;
-        uint256[1] memory output;
-        uint[6] memory input;
-        input[0] = 0x20;        // baseLen = new(big.Int).SetBytes(getData(input, 0, 32))
-        input[1] = 0x20;        // expLen  = new(big.Int).SetBytes(getData(input, 32, 32))
-        input[2] = 0x20;        // modLen  = new(big.Int).SetBytes(getData(input, 64, 32))
-        input[3] = _base;
-        input[4] = _exponent;
-        input[5] = _modulus;
-        assembly {
-            success := staticcall(sub(gas(), 2000), 5, input, 0xc0, output, 0x20)
-            // Use "invalid" to make gas estimation work
-            //switch success case 0 { invalid }
-        }
-        require(success);
-        return output[0];
-    }
-
-	/// return the sum of two points of G1
-	function g1add(G1Point memory p1, G1Point memory p2) view internal returns(G1Point memory r) {
-		uint[4] memory input;
-		input[0] = p1.X;
-		input[1] = p1.Y;
-		input[2] = p2.X;
-		input[3] = p2.Y;
-		bool success;
-		assembly {
-			success:= staticcall(sub(gas(), 2000), 6, input, 0xc0, r, 0x60)
-			// Use "invalid" to make gas estimation work
-			//switch success case 0 { invalid }
-		}
-		require(success);
-	}
-
-	/// return the product of a point on G1 and a scalar, i.e.
-	/// p == p.mul(1) and p.add(p) == p.mul(2) for all points p.
-	function g1mul(G1Point memory p, uint s) view internal returns(G1Point memory r) {
-		uint[3] memory input;
-		input[0] = p.X;
-		input[1] = p.Y;
-		input[2] = s;
-		bool success;
-		assembly {
-			success:= staticcall(sub(gas(), 2000), 7, input, 0x80, r, 0x60)
-			// Use "invalid" to make gas estimation work
-			//switch success case 0 { invalid }
-		}
-		require(success);
-	}
-
 	/// return the result of computing the pairing check
 	/// e(p1[0], p2[0]) *  .... * e(p1[n], p2[n]) == 1
 	/// For example pairing([P1(), P1().negate()], [P2(), P2()]) should
@@ -140,23 +73,6 @@ contract Email {
 	}
 
 
-	function equals(
-		G1Point memory a, G1Point memory b
-	) view internal returns(bool) {
-		return a.X == b.X && a.Y == b.Y;
-	}
-
-	function equals2(
-		G2Point memory a, G2Point memory b
-	) view internal returns(bool) {
-		return a.X[0] == b.X[0] && a.X[1] == b.X[1] && a.Y[0] == b.Y[0] && a.Y[1] == b.Y[1];
-	}
-
-	function HashToG1(string memory str) public payable returns(G1Point memory) {
-
-		return g1mul(P1(), uint256(keccak256(abi.encodePacked(str))));
-	}
-
 	function negate(G1Point memory p) public payable returns(G1Point memory) {
 		// The prime q in the base field F_q for G1
 		uint q = 21888242871839275222246405745257275088696311157297823662689037894645226208583;
@@ -180,7 +96,7 @@ contract Email {
 	}
 
 
-	function splitAt(string memory _str) public view returns (string[] memory){
+	function splitAt(string memory _str) pure internal returns (string[] memory){
 		bytes memory sbt = bytes(_str);
 		string[] memory res = new string[](2);
 		uint len = 0;
@@ -252,6 +168,7 @@ contract Email {
 		G1Point v; // g^\gamma
 		ElGamalCT[] privC;// ElGamal-encrypted private keys {g_i^\gamma}
 		string[] psids; // the pseudonyms of each member in the domain
+		address admin; // creator of the domain
 	}
 	struct DomainId {
 		uint index; // the index in the domain
@@ -262,25 +179,54 @@ contract Email {
 		G1Point C1; // C1 of BE header
 		G2Point C0p;// identical C0, but the base is h of G2
 	}
-	struct ClusterProof{
+	struct DomainProof{
 		G1Point skipows; // ski^s, where ski is BE private key and s is a random value
 		G2Point pki; // pki, the ith BE public key
 		G1Point vpows;// v^s, with the same exponentiation with skipows
+		G1Point vpowsp;// v^{s'}, commitment of vpows in sigma protocol
+		uint256 c; // challenge value in sigma protocol
+		uint256 hatc; // response value in sigma protocol
 	}
 
 	bool public pairingRes;
+	G1Point public pointRes;
 
 	uint256 constant MIN_FEE = 60000;//about $1, with 1ETH=3000$ and gas price = 5Gwei
-	// uint256 constant MAX_FEE = 6000000;//about $100, with 1ETH=3000$ and gas price = 5Gwei
-	// uint256 constant LOCK_PERIOD = 1 days;
 
-	// struct Deposit {
-    //     mapping(address => uint32) deposits;
-    //     uint32 unlockTime;
-    // }
+    function g1add(G1Point memory p1, G1Point memory p2) view internal returns (G1Point memory r) {
+		uint[4] memory input;
+		input[0] = p1.X;
+		input[1] = p1.Y;
+		input[2] = p2.X;
+		input[3] = p2.Y;
+		bool success;
+		assembly {
+			success := staticcall(sub(gas(), 2000), 6, input, 0xc0, r, 0x60)
+			// Use "invalid" to make gas estimation work
+			//switch success case 0 { invalid }
+		}
+		require(success);
+	}
 
-    // mapping(string => Deposit) public cid2Deposit;
+    function g1mul(G1Point memory p, uint s) view internal returns (G1Point memory r) {
+		uint[3] memory input;
+		input[0] = p.X;
+		input[1] = p.Y;
+		input[2] = s;
+		bool success;
+		assembly {
+			success := staticcall(sub(gas(), 2000), 7, input, 0x80, r, 0x60)
+			// Use "invalid" to make gas estimation work
+			//switch success case 0 { invalid }
+		}
+		require (success);
+	}
 
+	function equals(
+			G1Point memory a, G1Point memory b			
+	) pure internal returns (bool) {		
+		return a.X==b.X && a.Y==b.Y;
+	}
 	function register(string memory psid, PK memory pk) public payable returns (PK memory)  {
 		require(psid2PK[psid].A.X == 0, "psid exists.");
 
@@ -311,13 +257,12 @@ contract Email {
 
 		for (uint i = 0; i < psids.length; i++) {
 			psid2Day2Cid[psids[i]][day].push(cid);	
-			// todo transfer money to each user
 			address payable wallet = psid2PK[psids[i]].wallet;
 			uint256 actualValue = psid2PK[psids[i]].fee;
 			if (actualValue < MIN_FEE){
 				actualValue = MIN_FEE;
 			}
-			require(msg.value > actualValue, "Amount must be greater than zero");     
+			require(msg.value > actualValue, "Mail fees must be greater than MIN_FEE");     
 			wallet.transfer(actualValue);
 		}
 		// uint256 gasUsed = gasAtStart - gasleft(); // 计算消耗的 gas 量		
@@ -347,6 +292,7 @@ contract Email {
 
 	function regDomain(string memory dmId, G1Point[] memory pArr, G2Point[] memory qArr, G1Point memory v, ElGamalCT[] memory privC, string[] memory psids) public payable {
 		// G1Point[] memory privC1, G1Point[] memory privC2
+		dmId2Domain[dmId].admin = msg.sender;
 		dmId2Domain[dmId].v=G1Point(v.X,v.Y);
 		for (uint i = 0; i < qArr.length; i++) {//n+1
 			dmId2Domain[dmId].qArr.push(G2Point(qArr[i].X,qArr[i].Y));
@@ -363,17 +309,16 @@ contract Email {
 	}
 
 		
-	// TODO examine whether the sender is a domain member
 	function regCluster(string memory clsId, uint32[] memory S) public payable {
 		string[] memory parts = splitAt(clsId);
 		Domain memory dm = dmId2Domain[parts[1]];
-		if (dm.pArr.length > 0){//cluster should be built when a dm exists
+		if (dm.admin == msg.sender && dm.pArr.length > 0){//cluster should be built when a dm exists
 			clsId2S[clsId]= S;
 			dm2ClsIds[parts[1]].push(clsId);
 		}
 	}
 	function getS(string memory clsId) public view returns (uint32[] memory) {
-		string[] memory parts = splitAt(clsId);		
+		// string[] memory parts = splitAt(clsId);		
 		// return dmId2Domain[parts[1]].pArr.length;
 		return clsId2S[clsId];
 	}
@@ -395,23 +340,36 @@ contract Email {
 		return (dmId2Domain[dmId].pArr, dmId2Domain[dmId].qArr, dmId2Domain[dmId].v);
 	}
 	
-	function bcstTo(BcstHeader memory hdr, string memory clsId, ClusterProof memory proof, string memory cid) public payable returns (bool)  {
-		// todo anonymoty of senders
-		// todo send money
+	function bcstTo(BcstHeader memory hdr, string memory clsId, DomainProof memory pi, string memory cid) public payable returns (bool) {
+		string[] memory parts = splitAt(clsId);		
+		Domain memory dm = dmId2Domain[parts[1]];
+		string[] memory psids = dm.psids;	
+		uint n =  psids.length;	
+		for (uint i = 0; i < n; i++) {
+			PK memory pk = psid2PK[psids[i]];
+			uint256 actualValue = msg.value/n;
+			if (actualValue < MIN_FEE){
+				actualValue = MIN_FEE;
+			}
+			require(msg.value >= n*actualValue, "Broadcast fees must be greater than n*MIN_FEE");     
+			pk.wallet.transfer(actualValue);
+		}
+
 		G1Point[] memory p1Arr = new G1Point[](2);
 		G2Point[] memory p2Arr = new G2Point[](2);
-		p1Arr[0] = negate(proof.skipows);
-		p1Arr[1] = proof.vpows;
+		p1Arr[0] = negate(pi.skipows);
+		p1Arr[1] = pi.vpows;
 		p2Arr[0] = G2;
-		p2Arr[1] = proof.pki;
+		p2Arr[1] = pi.pki;
 
-		if(pairing(p1Arr, p2Arr)) {
+		// pointRes = g1mul(dm.v, pi.hatc);
+		
+		if(pairing(p1Arr, p2Arr) && equals(g1add(g1mul(pi.vpows, pi.c), g1mul(dm.v, pi.hatc)), pi.vpowsp)) {
 			// pairingRes= true;//cost ~20000 gas	
 			uint64 currentTime = uint64(block.timestamp);
 			uint64 day = currentTime - (currentTime % 86400);
 			cid2BcstMails[cid] = hdr;
 			clsId2Day2Cid[clsId][day].push(cid);
-			//TODO	emit event
 			emit Event("bcstTo", msg.sender, msg.value, cid, new string[](0));
 			return true;
 		}else{
@@ -419,6 +377,10 @@ contract Email {
 		}
 		
 	}
+	function getPoint() public view returns (G1Point memory) {		
+		return pointRes;
+	}
+
 
 	function getDailyBrdMail(string memory clsId, uint64 day) public view returns (string[] memory, BcstHeader[] memory) {
 		string[] memory cids = clsId2Day2Cid[clsId][day];

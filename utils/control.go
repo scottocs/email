@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"crypto/rand"
+	"crypto/sha256"
 	"email/compile/contract"
 	"email/crypto/aes"
 	"email/crypto/broadcast"
@@ -232,17 +233,29 @@ func BroadcastTo(client *ethclient.Client, ctc *contract.Contract, sender User, 
 	cid, _ := GetIPFSClient().Add(strings.NewReader(ct))
 	fmt.Println("broadcast mail IPFS link:", cid)
 	x, _ := rand.Int(rand.Reader, bn256.Order)
+	xp, _ := rand.Int(rand.Reader, bn256.Order)
 	//x = big.NewInt(1)
 	senderIndex := sender.Domains[dmId].SK.I
-	clusterRecivers := contract.EmailBrdcastHeader{G1ToPoint(hdr.C0), G1ToPoint(hdr.C1), G2ToPoint(hdr.C0p)}
+	clusterRecivers := contract.EmailBcstHeader{G1ToPoint(hdr.C0), G1ToPoint(hdr.C1), G2ToPoint(hdr.C0p)}
 	ptr := sender.Domains[dmId].SK.Di
-	proof := contract.EmailClusterProof{G1ToPoint(new(bn256.G1).ScalarMult(&ptr, x)),
-		G2ToPoint(&brdPKs.QArr[senderIndex]), G1ToPoint(new(bn256.G1).ScalarMult(&brdPKs.V, x))}
+	C := new(bn256.G1).ScalarMult(&brdPKs.V, x)
+	Cp := new(bn256.G1).ScalarMult(&brdPKs.V, xp)
+	hash := sha256.Sum256([]byte(C.String() + Cp.String()))
+	c := new(big.Int).SetBytes(hash[:])
+	hatc := new(big.Int).Sub(xp, new(big.Int).Mul(x, c))
+	hatc = new(big.Int).Mod(hatc, bn256.Order)
+	proof := contract.EmailDomainProof{G1ToPoint(new(bn256.G1).ScalarMult(&ptr, x)),
+		G2ToPoint(&brdPKs.QArr[senderIndex]), G1ToPoint(C), G1ToPoint(Cp), c, hatc,
+	}
 	//e(skipows,g2)= e(pki,vpows)
+	// schnorr sigma protocol verification
+	//fmt.Println("point", new(bn256.G1).ScalarMult(&brdPKs.V, hatc).String())
 	para := []interface{}{"BcstTo", clusterRecivers, clusterId, proof, cid}
 	ether := big.NewInt(1000000000000000000)
 	ether100 := big.NewInt(1).Mul(ether, big.NewInt(100))
 	_ = Transact(client, sender.Privatekey, ether100, ctc, para).(*types.Receipt)
+	//SCpoint, _ := ctc.GetPoint(&bind.CallOpts{})
+	//fmt.Println("sc point", PointToG1(SCpoint))
 	return cid
 }
 

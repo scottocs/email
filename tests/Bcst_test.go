@@ -11,7 +11,7 @@ func TestBcstOneshotCluster(t *testing.T) {
 	users, client, ctc := utils.DeployAndInitWallet()
 	psids := []string{"Bob", "Alice", "Charlie", "Emily", "Alexander", "Sophia", "Benjamin", "Olivia", "James", "Peggy"}
 	//Bob := users[0]
-	fmt.Println("=============================Bob creates temperory domain2 and broadcast1=====================")
+	fmt.Println("=============================Bob creates temperory domain and broadcast=====================")
 	createdUsers, createdClsId := utils.CreateTempCluster(client, ctc, users[0], psids)
 	msgCreated := []byte("Dear there, run. -------by " + createdUsers[0].Psid)
 	utils.BroadcastTo(client, ctc, createdUsers[0], msgCreated, createdClsId)

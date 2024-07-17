@@ -48,8 +48,14 @@ Version: 0.8.25-develop
     ```bash
     bash compile.sh
     ```
+4. Start the IPFS serivce
+5. Start the monitor process (optional)
 
-4. Run the main.go
     ```bash
-    go run main.go
+    python monitorEvent.py
+    ```
+6. Test the Email system
+    ```bash
+    cd tests
+    go test
     ```

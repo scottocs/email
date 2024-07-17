@@ -31,7 +31,8 @@ import (
 
 func InitBIP32Wallet(client *ethclient.Client, users []User) {
 	for j := 0; j < len(users); j++ {
-		envMap, _ := godotenv.Read(".env")
+		//envMap, _ := godotenv.Read(findEnvFile()".env")
+		envMap := GetAllEnv()
 		ether := big.NewInt(1000000000000000000)
 		prvKeySeed := GetENV("MASTER_KEY_" + users[j].Psid)
 		var msk *bip32.Key
@@ -63,7 +64,8 @@ func InitBIP32Wallet(client *ethclient.Client, users []User) {
 			TransactValue(client, users[j].Privatekey, GetAddr(childKeyStr), big.NewInt(1).Mul(big.NewInt(1000), ether)) //1000ETH
 			envMap[users[j].Psid+"_"+strconv.Itoa(i)] = childKeyStr
 		}
-		godotenv.Write(envMap, ".env")
+		//godotenv.Write(envMap, ".env")
+		WriteAllEnv(envMap)
 	}
 
 }
@@ -101,6 +103,17 @@ func GetENV(key string) string {
 		log.Fatalf("Some error occured. Err: %s", err)
 	}
 	return os.Getenv(key)
+}
+
+func GetAllEnv() map[string]string {
+	dir, _ := os.Getwd()
+	envMap, _ := godotenv.Read(findEnvFile(dir))
+	return envMap
+}
+func WriteAllEnv(envMap map[string]string) {
+	dir, _ := os.Getwd()
+	godotenv.Write(envMap, findEnvFile(dir))
+
 }
 
 func findEnvFile(startDir string) string {
@@ -171,7 +184,6 @@ func CreateTempCluster(client *ethclient.Client, ctc *contract.Contract, from Us
 		sa1 := stealth.CalculatePub(stealth.PublicKey{PointToG1(pkRes.A), PointToG1(pkRes.B)}) //A
 		sa2 := stealth.CalculatePub(stealth.PublicKey{PointToG1(pkRes.A), PointToG1(pkRes.B)}) //B
 
-		//todo sa3 is on bn128
 		var domain = make(map[string]Domain)
 		//map[string][]uint32{clusterId: SEmily}
 		var Smap = make(map[string][]uint32)
