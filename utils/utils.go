@@ -85,11 +85,9 @@ func GetAddrFromPK(privatekey string) common.Address {
 }
 
 func ReverseString(input string) string {
-	// 将字符串转换为rune数组
 	runes := []rune(input)
 	length := len(runes)
 
-	// 倒序构建字符串
 	for i := 0; i < length/2; i++ {
 		runes[i], runes[length-i-1] = runes[length-i-1], runes[i]
 	}
@@ -97,8 +95,8 @@ func ReverseString(input string) string {
 }
 
 func GetENV(key string) string {
-	dir, _ := os.Getwd()
-	err := godotenv.Load(findEnvFile(dir))
+	//dir, _ := os.Getwd()
+	err := godotenv.Load(GetGoModPath() + "/.env")
 	if err != nil {
 		log.Fatalf("Some error occured. Err: %s", err)
 	}
@@ -106,31 +104,39 @@ func GetENV(key string) string {
 }
 
 func GetAllEnv() map[string]string {
-	dir, _ := os.Getwd()
-	envMap, _ := godotenv.Read(findEnvFile(dir))
+	//dir, _ := os.Getwd()
+	envMap, _ := godotenv.Read(GetGoModPath() + "/.env")
 	return envMap
 }
 func WriteAllEnv(envMap map[string]string) {
-	dir, _ := os.Getwd()
-	godotenv.Write(envMap, findEnvFile(dir))
+	//dir, _ := os.Getwd()
+	godotenv.Write(envMap, GetGoModPath()+"/.env")
 
 }
 
-func findEnvFile(startDir string) string {
-	currentDir := startDir
+func GetGoModPath() string {
+	currentDir, _ := os.Getwd()
 	for {
-		envPath := filepath.Join(currentDir, ".env")
-		if _, err := os.Stat(envPath); err == nil {
-			return envPath
+		if _, err := os.Stat(filepath.Join(currentDir, "go.mod")); err == nil {
+			return currentDir
 		}
-
 		parentDir := filepath.Dir(currentDir)
 		if parentDir == currentDir {
-			break
+			return ""
 		}
 		currentDir = parentDir
 	}
 	return ""
+}
+
+func EnsureDir(dir string) error {
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		err := os.MkdirAll(dir, os.ModePerm)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func Hash2G1(msg string) *bn256.G1 {
@@ -162,7 +168,7 @@ func isPrintable(s string) bool {
 	return true
 }
 
-func CreateTempCluster(client *ethclient.Client, ctc *contract.Contract, from User, psids []string) ([]User, string) {
+func CreateTempCluster(client *ethclient.Client, ctc *contract.Contract, from User, psids []string) ([]User, string, []uint32) {
 	users := make([]User, len(psids))
 
 	rand2.Seed(time.Now().Unix())
@@ -198,11 +204,11 @@ func CreateTempCluster(client *ethclient.Client, ctc *contract.Contract, from Us
 		//ptr := users[i].Domains[dmId].SK.Di
 		addr := common.BytesToAddress(([]byte)(users[i].Addr))
 		para := []interface{}{"Register", tmpPsid, contract.EmailPK{G1ToPoint(sa1.S), G1ToPoint(sa2.S),
-			big.NewInt(0), addr, []contract.EmailG1Point{G1ToPoint(sa1.R), G1ToPoint(sa2.R)}}}
+			big.NewInt(0), addr, []contract.EmailG1Point{G1ToPoint(sa1.R), G1ToPoint(sa2.R)}}, psids[i]}
 		_ = Transact(client, from.Privatekey, big.NewInt(0), ctc, para).(*types.Receipt)
 
-		para2 := []interface{}{"LinkTmpPsid", psids[i], tmpPsid}
-		_ = Transact(client, from.Privatekey, big.NewInt(0), ctc, para2).(*types.Receipt)
+		// para2 := []interface{}{"LinkTmpPsid", psids[i], tmpPsid}
+		// _ = Transact(client, from.Privatekey, big.NewInt(0), ctc, para2).(*types.Receipt)
 	}
 
 	//ptr := users[0].Domains[dmId].SK.Di
@@ -216,6 +222,6 @@ func CreateTempCluster(client *ethclient.Client, ctc *contract.Contract, from Us
 	//	}
 	//}
 	//fmt.Println("Alice is NOT in the cluster: " + clusterId + " She is NOT a receiver.")
-	return users, clusterId
+	return users, clusterId, ClS
 
 }

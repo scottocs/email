@@ -7,26 +7,6 @@ import (
 	"testing"
 )
 
-func TestBcstOneshotCluster(t *testing.T) {
-	users, client, ctc := utils.DeployAndInitWallet()
-	psids := []string{"Bob", "Alice", "Charlie", "Emily", "Alexander", "Sophia", "Benjamin", "Olivia", "James", "Peggy"}
-	//Bob := users[0]
-	fmt.Println("=============================Bob creates temperory domain and broadcast=====================")
-	createdUsers, createdClsId := utils.CreateTempCluster(client, ctc, users[0], psids)
-	msgCreated := []byte("Dear there, run. -------by " + createdUsers[0].Psid)
-	utils.BroadcastTo(client, ctc, createdUsers[0], msgCreated, createdClsId)
-
-	//Alice is a cluster and ties to read the email
-	fmt.Println("=============================createUser read broadcasted email=====================")
-	for j := 0; j < len(createdUsers); j++ {
-		User := utils.ResolveUser(ctc, psids[j], users[j].Aa, users[j].Bb, users[j].Privatekey, users[j].Addr)
-		TmpUsers := utils.ResolveTmpUser(ctc, User.Psid, User.Aa, User.Bb, User.Addr)
-		for i := 0; i < len(TmpUsers); i++ {
-			utils.ReadBrdMail(ctc, TmpUsers[i])
-		}
-	}
-}
-
 func TestBcstLinkableCluster(t *testing.T) {
 	users, client, ctc := utils.DeployAndInitWallet()
 	//Bob is a domain administrator
@@ -36,44 +16,70 @@ func TestBcstLinkableCluster(t *testing.T) {
 	Bobindex := 0
 	Bob := users[Bobindex]
 	//Bob.Domains = map[string]utils.Domains{domainId: {brdPks, brdPrivs[Bobindex], nil}}
-	fmt.Println("=============================upload broadcast public keys=====================")
+	fmt.Println("\n\n=============================register domain=====================")
 	//Bob sends brdPrivs to each domain member via one-to-one mailing (Here, sends secretkeys to the cluster)
 	utils.RegDomain(client, ctc, Bob, brdPks, brdPrivs, users)
 
 	////Charlie is a cluster manager, Charlie generates \prod_j∈S g_{n+1-j} for the cluster
-	fmt.Println("=============================build cluster public keys=====================")
-	size := n / 2
+	fmt.Println("=============================register cluster=====================")
+	size := n
 	S := make([]uint32, size)
 	for i := 0; i < size; i++ {
 		S[i] = uint32(i) + 1
 	}
-	clusterId := "computer@" + domainId
-	Charlie := users[2]
-	//fmt.Println(clusterId)
-	utils.RegCluster(client, ctc, Charlie, clusterId, S)
+	fmt.Printf("domain size: %d, cluster size:%d\n", len(users), len(S))
+	clusterId := "android@" + domainId
+	// cluster should be created by the domain administrator
+	utils.RegCluster(client, ctc, Bob, clusterId, S)
 	//todo multiple clusters
 
 	// Emily as a member, broadcast a email
 	fmt.Println("=============================broadcast email 1=====================")
 	indexEmily := 3
-	Emily := utils.ResolveUser(ctc, "Emily", users[indexEmily].Aa, users[indexEmily].Bb, users[indexEmily].Privatekey, users[indexEmily].Addr)
+	Emily := utils.ResolveUser(ctc, users[indexEmily].Psid, users[indexEmily].Aa, users[indexEmily].Bb, users[indexEmily].Privatekey, users[indexEmily].Addr)
 	msgEmily := []byte("Dear Staff, we are going to have a meeting at Jun 30, 2024 09:00 at the gym. ---Emily")
 	utils.BroadcastTo(client, ctc, Emily, msgEmily, clusterId)
 
-	// Alexander as a member, broadcast a email
-	fmt.Println("=============================broadcast email 2=====================")
 	indexAlexander := 4
-	Alexander := utils.ResolveUser(ctc, "Alexander", users[indexAlexander].Aa, users[indexAlexander].Bb, users[indexAlexander].Privatekey, users[indexAlexander].Addr)
-	msgAlexander := []byte("Dear Staff, I am Alexander. ---Alexander")
-	utils.BroadcastTo(client, ctc, Alexander, msgAlexander, clusterId)
+	Alexander := utils.ResolveUser(ctc, users[indexAlexander].Psid, users[indexAlexander].Aa, users[indexAlexander].Bb, users[indexAlexander].Privatekey, users[indexAlexander].Addr)
+	for i := 0; i < 3; i++ {
+		// Alexander as a member, broadcast a email
+		fmt.Println("=============================broadcast email 2=====================", i)
+		msgAlexander := []byte("Dear Staff, I am Alexander. ---Alexander")
+		utils.BroadcastTo(client, ctc, Alexander, msgAlexander, clusterId)
+	}
 
 	//Alice is a cluster and ties to read the email
 	fmt.Println("=============================read broadcasted email=====================")
 	indexAlice := 1
 	Alice := utils.ResolveUser(ctc, "Alice", users[indexAlice].Aa, users[indexAlice].Bb, users[indexAlice].Privatekey, users[indexAlice].Addr)
 	utils.ReadBrdMail(ctc, Alice)
-
 }
 
-//pairingRes, _ := ctc.GetPairingRes(&bind.CallOpts{})
-//fmt.Printf("GetPairingRes: %v\n", pairingRes)
+func TestBcstOneshotCluster(t *testing.T) {
+	users, client, ctc := utils.DeployAndInitWallet()
+	psids := []string{"Bob", "Alice", "Charlie", "Emily", "Alexander", "Sophia", "Benjamin", "Olivia", "James", "Peggy", "Isabella", "Jacob", "Ava", "Matthew", "Mia", "Daniel", "Abigail", "Ethan", "Harper", "Max", "Amelia", "Ryan", "Evelyn", "Nathan", "Elizabeth", "Samuel", "Charlotte", "Christopher", "Grace", "Jonathan", "Lily", "Gabriel", "Ella", "Andrew", "Avery", "Joshua", "Sofia", "Anthony", "Scarlett", "Caleb", "Victoria", "Logan", "Madison", "Isaac", "Eleanor", "Lucas", "Hannah", "Owen", "Addison", "Dylan", "Zoe", "Jack", "Penelope", "Luke", "Layla", "Jeremiah", "Natalie", "Isaiah", "Audrey", "Carter", "Leah", "Josiah", "Savannah", "Julian", "Brooklyn", "Wyatt", "Stella", "Hunter", "Claire", "Levi", "Skylar", "Christian", "Maya", "Eli", "Paisley", "Lincoln", "Anna", "Jordan", "Caroline", "Charles", "Eliana", "Thomas", "Ruby", "Aaron", "Aria", "Connor", "Aurora", "Cameron", "Naomi", "Adrian", "Valentina", "Landon", "Alexa", "Gavin", "Lydia", "Evan", "Piper", "Sebastian", "Ariana", "Cooper", "Sadie"}
+
+	fmt.Println("\n\n=============================Bob creates temperory domain and cluster =====================")
+	createdUsers, createdClsId, ClS := utils.CreateTempCluster(client, ctc, users[0], psids)
+	fmt.Printf("domain size: %d, cluster size:%d\n", len(createdUsers), len(ClS))
+	for i := 0; i < 3; i++ {
+		fmt.Println("=============================Bob broadcast =====================", i)
+		msgCreated := []byte("Dear there, run -------by " + createdUsers[0].Psid)
+		utils.BroadcastTo(client, ctc, createdUsers[0], msgCreated, createdClsId)
+	}
+
+	//Alice is a cluster and ties to read the email
+	fmt.Println("=============================createUser read broadcasted email=====================")
+	num := len(createdUsers)
+	if num > 10 {
+		num = 10
+	}
+	for j := 0; j < num; j++ {
+		User := utils.ResolveUser(ctc, psids[j], users[j].Aa, users[j].Bb, users[j].Privatekey, users[j].Addr)
+		TmpUsers := utils.ResolveTmpUser(ctc, User.Psid, User.Aa, User.Bb, User.Addr)
+		for i := 0; i < len(TmpUsers); i++ {
+			utils.ReadBrdMail(ctc, TmpUsers[i])
+		}
+	}
+}

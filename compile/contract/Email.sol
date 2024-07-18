@@ -188,6 +188,8 @@ contract Email {
 		uint256 hatc; // response value in sigma protocol
 	}
 
+	mapping(string => G1Point) public dmId2DomainV;
+
 	bool public pairingRes;
 	G1Point public pointRes;
 
@@ -227,7 +229,7 @@ contract Email {
 	) pure internal returns (bool) {		
 		return a.X==b.X && a.Y==b.Y;
 	}
-	function register(string memory psid, PK memory pk) public payable returns (PK memory)  {
+	function register(string memory psid, PK memory pk, string memory oriPsid) public payable returns (PK memory)  {
 		require(psid2PK[psid].A.X == 0, "psid exists.");
 
 		if (psid2PK[psid].A.X == 0) {
@@ -239,6 +241,10 @@ contract Email {
 				psid2PK[psid].extra.push(G1Point(pk.extra[i].X,pk.extra[i].Y));
 			}
 			
+		}
+		// this is used for tempoarily created psid
+		if(bytes(oriPsid).length != 0){
+			psid2TmpPsid[oriPsid].push(psid);
 		}
 		return psid2PK[psid];
 	}
@@ -279,13 +285,6 @@ contract Email {
 		return (cids, mails);
 	}
 
-	function linkTmpPsid(string memory psid, string memory tmpPsid) public payable {
-		psid2TmpPsid[psid].push(tmpPsid);
-		string[] memory extra = new string[](1);
-		extra[0] = tmpPsid;
-		emit Event("linkTo", msg.sender, msg.value, psid, extra);
-	}
-
 	function getTmpPsid(string memory psid) public view returns (string[] memory) {
 		return psid2TmpPsid[psid];
 	}
@@ -294,6 +293,7 @@ contract Email {
 		// G1Point[] memory privC1, G1Point[] memory privC2
 		dmId2Domain[dmId].admin = msg.sender;
 		dmId2Domain[dmId].v=G1Point(v.X,v.Y);
+		dmId2DomainV[dmId]=G1Point(v.X,v.Y);
 		for (uint i = 0; i < qArr.length; i++) {//n+1
 			dmId2Domain[dmId].qArr.push(G2Point(qArr[i].X,qArr[i].Y));
 		}
@@ -342,18 +342,21 @@ contract Email {
 	
 	function bcstTo(BcstHeader memory hdr, string memory clsId, DomainProof memory pi, string memory cid) public payable returns (bool) {
 		string[] memory parts = splitAt(clsId);		
-		Domain memory dm = dmId2Domain[parts[1]];
-		string[] memory psids = dm.psids;	
-		uint n =  psids.length;	
-		for (uint i = 0; i < n; i++) {
-			PK memory pk = psid2PK[psids[i]];
-			uint256 actualValue = msg.value/n;
-			if (actualValue < MIN_FEE){
-				actualValue = MIN_FEE;
-			}
-			require(msg.value >= n*actualValue, "Broadcast fees must be greater than n*MIN_FEE");     
-			pk.wallet.transfer(actualValue);
-		}
+		G1Point memory v = dmId2DomainV[parts[1]];
+		
+		
+		// the fees can be put into a buffer, we comment it when testing the gas consumption 
+		// string[] memory psids = dm.psids;	
+		// uint n =  psids.length;	
+		// for (uint i = 0; i < n; i++) {
+		// 	PK memory pk = psid2PK[psids[i]];
+		// 	uint256 actualValue = msg.value/n;
+		// 	if (actualValue < MIN_FEE){
+		// 		actualValue = MIN_FEE;
+		// 	}
+		// 	require(msg.value >= n*actualValue, "Broadcast fees must be greater than n*MIN_FEE");     
+		// 	pk.wallet.transfer(actualValue);
+		// }
 
 		G1Point[] memory p1Arr = new G1Point[](2);
 		G2Point[] memory p2Arr = new G2Point[](2);
@@ -364,7 +367,7 @@ contract Email {
 
 		// pointRes = g1mul(dm.v, pi.hatc);
 		
-		if(pairing(p1Arr, p2Arr) && equals(g1add(g1mul(pi.vpows, pi.c), g1mul(dm.v, pi.hatc)), pi.vpowsp)) {
+		if(pairing(p1Arr, p2Arr) && equals(g1add(g1mul(pi.vpows, pi.c), g1mul(v, pi.hatc)), pi.vpowsp)) {
 			// pairingRes= true;//cost ~20000 gas	
 			uint64 currentTime = uint64(block.timestamp);
 			uint64 day = currentTime - (currentTime % 86400);
@@ -375,6 +378,7 @@ contract Email {
 		}else{
 			return false;
 		}
+		return false;
 		
 	}
 	function getPoint() public view returns (G1Point memory) {		

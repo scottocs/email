@@ -59,3 +59,11 @@ Version: 0.8.25-develop
     cd tests
     go test
     ```
+    or 
+    ```bash
+    go test -v -run TestBcstLinkableCluster
+    ```
+    or
+    ```bash
+    go test Bcst_test.go -v
+    ```

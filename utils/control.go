@@ -43,24 +43,25 @@ func DeployAndInitWallet() ([]User, *ethclient.Client, *contract.Contract) {
 	address, _ := Deploy(client, contract_name, deployTX.(*bind.TransactOpts))
 	ctc, err := contract.NewContract(common.HexToAddress(address.Hex()), client)
 
-	ioutil.WriteFile("../compile/contract/addr.txt", []byte(address.String()), 0644)
-
+	ioutil.WriteFile(GetGoModPath()+"/compile/contract/addr.txt", []byte(address.String()), 0644)
+	//fmt.Println(GetGoModPath() + "/compile/contract/addr.txt")
 	fmt.Println("=============================register psids and public keys=====================")
 	//Users register their public keys (A B)
-	names := []string{"Bob", "Alice", "Charlie", "Emily", "Alexander", "Sophia", "Benjamin", "Olivia", "James", "Peggy"}
-	//names := []string{"Bob", "Alice", "Charlie", "Emily", "Alexander", "Sophia", "Benjamin", "Olivia", "James", "Peggy", "Isabella", "Jacob", "Ava", "Matthew", "Mia", "Daniel", "Abigail", "Ethan", "Harper", "Alexander", "Amelia", "Ryan", "Evelyn", "Nathan", "Elizabeth", "Samuel", "Charlotte", "Christopher", "Grace", "Jonathan", "Lily", "Gabriel", "Ella", "Andrew", "Avery", "Joshua", "Sofia", "Anthony", "Scarlett", "Caleb", "Victoria", "Logan", "Madison", "Isaac", "Eleanor", "Lucas", "Hannah", "Owen", "Addison", "Dylan", "Zoe", "Jack", "Penelope", "Luke", "Layla", "Jeremiah", "Natalie", "Isaiah", "Audrey", "Carter", "Leah", "Josiah", "Savannah", "Julian", "Brooklyn", "Wyatt", "Stella", "Hunter", "Claire", "Levi", "Skylar", "Christian", "Maya", "Eli", "Paisley", "Lincoln", "Anna", "Jordan", "Caroline", "Charles", "Eliana", "Thomas", "Ruby", "Aaron", "Aria", "Connor", "Aurora", "Cameron", "Naomi", "Adrian", "Valentina", "Landon", "Alexa", "Gavin", "Lydia", "Evan", "Piper", "Sebastian", "Ariana", "Cooper", "Sadie"}
+	//names := []string{"Bob", "Alice", "Charlie", "Emily", "Alexander", "Sophia", "Benjamin", "Olivia", "James", "Peggy"}
+	names := []string{"Bob", "Alice", "Charlie", "Emily", "Alexander", "Sophia", "Benjamin", "Olivia", "James", "Peggy", "Isabella", "Jacob", "Ava", "Matthew", "Mia", "Daniel", "Abigail", "Ethan", "Harper", "Max", "Amelia", "Ryan", "Evelyn", "Nathan", "Elizabeth", "Samuel", "Charlotte", "Christopher", "Grace", "Jonathan", "Lily", "Gabriel", "Ella", "Andrew", "Avery", "Joshua", "Sofia", "Anthony", "Scarlett", "Caleb", "Victoria", "Logan", "Madison", "Isaac", "Eleanor", "Lucas", "Hannah", "Owen", "Addison", "Dylan", "Zoe", "Jack", "Penelope", "Luke", "Layla", "Jeremiah", "Natalie", "Isaiah", "Audrey", "Carter", "Leah", "Josiah", "Savannah", "Julian", "Brooklyn", "Wyatt", "Stella", "Hunter", "Claire", "Levi", "Skylar", "Christian", "Maya", "Eli", "Paisley", "Lincoln", "Anna", "Jordan", "Caroline", "Charles", "Eliana", "Thomas", "Ruby", "Aaron", "Aria", "Connor", "Aurora", "Cameron", "Naomi", "Adrian", "Valentina", "Landon", "Alexa", "Gavin", "Lydia", "Evan", "Piper", "Sebastian", "Ariana", "Cooper", "Sadie"}
+	names = names[:30]
 	users := make([]User, len(names))
 	for i := 0; i < len(names); i++ {
 		a, _ := rand.Int(rand.Reader, bn256.Order)
 		b, _ := rand.Int(rand.Reader, bn256.Order)
 		A := new(bn256.G1).ScalarBaseMult(a)
 		B := new(bn256.G1).ScalarBaseMult(b)
-		privatekey := GetENV("PRIVATE_KEY_" + strconv.Itoa(i+1))
+		privatekey := GetENV("PRIVATE_KEY_" + strconv.Itoa(i%10+1))
 		key, _ := crypto.HexToECDSA(ReverseString(privatekey))
 		publicKey := key.Public()
 		publicKeyECDSA, _ := publicKey.(*ecdsa.PublicKey)
 		addr := crypto.PubkeyToAddress(*publicKeyECDSA)
-		para := []interface{}{"Register", names[i], contract.EmailPK{G1ToPoint(A), G1ToPoint(B), ether01, addr, make([]contract.EmailG1Point, 0)}}
+		para := []interface{}{"Register", names[i], contract.EmailPK{G1ToPoint(A), G1ToPoint(B), ether01, addr, make([]contract.EmailG1Point, 0)}, ""}
 		_ = Transact(client, privatekey, big.NewInt(0), ctc, para).(*types.Receipt)
 		var domains = make(map[string]Domain)
 		users[i] = User{names[i], a, b, A, B, privatekey, addr.String(), domains}
@@ -70,7 +71,10 @@ func DeployAndInitWallet() ([]User, *ethclient.Client, *contract.Contract) {
 	InitBIP32Wallet(client, users)
 	return users, client, ctc
 }
-func MailTo(client *ethclient.Client, ctc *contract.Contract, sender User, key *bn256.G1, msg []byte, to User, recs []string) string {
+func MailTo(client *ethclient.Client, ctc *contract.Contract, sender User, msg []byte, to User, recs []string) string {
+	m, _ := rand.Int(rand.Reader, bn256.Order)
+	key := new(bn256.G1).ScalarBaseMult(m)
+
 	pkRes, _ := ctc.GetPK(&bind.CallOpts{}, to.Psid)
 	sa := stealth.CalculatePub(stealth.PublicKey{PointToG1(pkRes.A), PointToG1(pkRes.B)})
 	r, _ := rand.Int(rand.Reader, bn256.Order)
@@ -79,7 +83,7 @@ func MailTo(client *ethclient.Client, ctc *contract.Contract, sender User, key *
 	ct, _ := aes.Encrypt(msg, key.Marshal()[:32])
 	cid := IPFSUpload(ct)
 	mail := contract.EmailMail{contract.EmailStealthPub{G1ToPoint(sa.R), G1ToPoint(sa.S)}, contract.EmailElGamalCT{G1ToPoint(c1), G1ToPoint(c2)}}
-	para := []interface{}{"MailTo", mail, cid, append(recs, to.Psid)}
+	para := []interface{}{"MailTo", mail, cid, recs}
 	ether := big.NewInt(1000000000000000000)
 	ether100 := big.NewInt(1).Mul(ether, big.NewInt(100))
 	//fmt.Println(sender)
@@ -100,8 +104,10 @@ func ReadMail(ctc *contract.Contract, my User) {
 			stealth.StealthPub{PointToG1(dayMails[i].Pub.R), PointToG1(dayMails[i].Pub.S)})
 		cid2Flag := strings.Split(cids[i], "||")
 		//fmt.Println(cid2Flag)
-		GetIPFSClient().Get(cid2Flag[0], "../users/"+my.Psid+"/")
-		file, _ := os.Open("../users/" + my.Psid + "/" + cid2Flag[0])
+		dir := GetGoModPath() + "/users/" + my.Psid + "/"
+		EnsureDir(dir)
+		GetIPFSClient().Get(cid2Flag[0], dir)
+		file, _ := os.Open(dir + cid2Flag[0])
 		content, _ := io.ReadAll(file)
 		decRes := string(content)
 		//if cid2Flag[1] == "0" {
@@ -249,7 +255,7 @@ func BroadcastTo(client *ethclient.Client, ctc *contract.Contract, sender User, 
 	}
 	//e(skipows,g2)= e(pki,vpows)
 	// schnorr sigma protocol verification
-	//fmt.Println("point", new(bn256.G1).ScalarMult(&brdPKs.V, hatc).String())
+	// fmt.Printf("point %v %v %v %v\n", proof, cid, clusterId, clusterRecivers)
 	para := []interface{}{"BcstTo", clusterRecivers, clusterId, proof, cid}
 	ether := big.NewInt(1000000000000000000)
 	ether100 := big.NewInt(1).Mul(ether, big.NewInt(100))
@@ -261,9 +267,11 @@ func BroadcastTo(client *ethclient.Client, ctc *contract.Contract, sender User, 
 
 func ReadBrdMail(ctc *contract.Contract, created User) {
 	DomainIds, _ := ctc.GetMyDomains(&bind.CallOpts{}, created.Psid)
+	// fmt.Println(DomainIds)
 	for i := 0; i < len(DomainIds); i++ {
 		dmId := DomainIds[i].DmId
 		clsIdsDL, _ := ctc.GetMyClusters(&bind.CallOpts{}, dmId)
+		// fmt.Println(dmId, clsIdsDL)
 		for j := 0; j < len(clsIdsDL); j++ {
 			clusterId := clsIdsDL[j]
 			//dmId := strings.Split(clusterId, "@")[1]
@@ -283,9 +291,11 @@ func ReadBrdMail(ctc *contract.Contract, created User) {
 				beKp := sk.Decrypt(created.Domains[dmId].Clusters[clusterId], hdr, created.Domains[dmId].PKs)
 				//V := created.Domains[dmId].PKs.V
 				//fmt.Println(i, "beKp", created.Domains[dmId].Clusters[clusterId], dmId, beKp.String()[:30], V.String()[:30])
-				os.MkdirAll("../users/"+created.Psid, os.ModePerm)
-				GetIPFSClient().Get(cid, "../users/"+created.Psid+"/")
-				file, _ := os.Open("../users/" + created.Psid + "/" + cid)
+				dir := GetGoModPath() + "/users/" + created.Psid + "/"
+				EnsureDir(dir)
+				//os.MkdirAll(dir, os.ModePerm)
+				GetIPFSClient().Get(cid, dir)
+				file, _ := os.Open(dir + cid)
 				content, _ := io.ReadAll(file)
 				decRes, _ := aes.Decrypt(string(content), beKp.Marshal()[:32])
 				if isPrintable(decRes) {
@@ -319,12 +329,12 @@ func TransactValue(client *ethclient.Client, privatekey string, toAddr common.Ad
 
 // deploy contract and obtain abi interface and bin of source code
 func Deploy(client *ethclient.Client, contract_name string, auth *bind.TransactOpts) (common.Address, *types.Transaction) {
-	abiBytes, _ := os.ReadFile("../compile/contract/" + contract_name + ".abi")
-	bin, _ := os.ReadFile("../compile/contract/" + contract_name + ".bin")
+	abiBytes, _ := os.ReadFile(GetGoModPath() + "/compile/contract/" + contract_name + ".abi")
+	bin, _ := os.ReadFile(GetGoModPath() + "/compile/contract/" + contract_name + ".bin")
 	parsedABI, _ := abi.JSON(strings.NewReader(string(abiBytes)))
 	address, tx, _, _ := bind.DeployContract(auth, parsedABI, common.FromHex(string(bin)), client)
 	receipt, _ := bind.WaitMined(context.Background(), client, tx)
-	fmt.Printf("Basics.sol deployed! Address: %s Gas used: %d\n", address.Hex(), receipt.GasUsed)
+	fmt.Printf("\n\nContract is deployed! Address: %s Gas used: %d\n", address.Hex(), receipt.GasUsed)
 	return address, tx
 }
 
@@ -368,8 +378,8 @@ func Transact(client *ethclient.Client, privatekey string, value *big.Int, ctc *
 		f = ctc.RegCluster
 	case "GetBrdEncPrivs":
 		f = ctc.GetBrdEncPrivs
-	case "LinkTmpPsid":
-		f = ctc.LinkTmpPsid
+	// case "LinkTmpPsid":
+	// 	f = ctc.LinkTmpPsid
 	case "GetTmpPsid":
 		f = ctc.GetTmpPsid
 		//case "SplitAt":
@@ -390,9 +400,10 @@ func Transact(client *ethclient.Client, privatekey string, value *big.Int, ctc *
 	//fmt.Println(resultValues[0].Kind(), resultValues[0].Type())
 	tx := resultValues[0].Interface().(*types.Transaction)
 	receipt, _ := bind.WaitMined(context.Background(), client, tx)
-	//fmt.Printf("HashToG1() Gas used: %d\n", receipt.GasUsed)
-	fmt.Printf("%v Gas used: %d\n", para[0], receipt.GasUsed)
+	// fmt.Println(para[0].(string) == "Register", strings.Contains(para[1].(string), "Alice"))
+	if para[0].(string) != "Register" || (para[0].(string) == "Register" && strings.Contains(para[1].(string), "Alice")) {
+		fmt.Printf("%v Gas used: %d\n", para[0], receipt.GasUsed)
+	}
+	// fmt.Printf("%v Gas used: %d\n", para[0], receipt.GasUsed)
 	return receipt
-
-	return auth
 }
