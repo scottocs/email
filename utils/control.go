@@ -72,7 +72,7 @@ func DeployAndInitWallet() ([]User, *ethclient.Client, *contract.Contract) {
 	InitBIP32Wallet(client, users)
 	return users, client, ctc
 }
-func MailTo(client *ethclient.Client, ctc *contract.Contract, sender User, msg []byte, to User, recs []string) string {
+func Oto(client *ethclient.Client, ctc *contract.Contract, sender User, msg []byte, to User, recs []string) string {
 	m, _ := rand.Int(rand.Reader, bn256.Order)
 	key := new(bn256.G1).ScalarBaseMult(m)
 
@@ -84,7 +84,7 @@ func MailTo(client *ethclient.Client, ctc *contract.Contract, sender User, msg [
 	ct, _ := aes.Encrypt(msg, key.Marshal()[:32])
 	cid := IPFSUpload(ct)
 	mail := contract.EmailMail{contract.EmailStealthPub{G1ToPoint(sa.R), G1ToPoint(sa.S)}, G1ToPoint(c1), G1ToPoint(c2)}
-	para := []interface{}{"MailTo", mail, cid, recs}
+	para := []interface{}{"Oto", mail, cid, recs}
 	ether := big.NewInt(1000000000000000000)
 	ether100 := big.NewInt(1).Mul(ether, big.NewInt(100))
 	//fmt.Println(sender)
@@ -376,8 +376,8 @@ func Transact(client *ethclient.Client, privatekey string, value *big.Int, ctc *
 	//	f = ctc.HashToG1
 	case "Register":
 		f = ctc.Register
-	case "MailTo":
-		f = ctc.MailTo
+	case "Oto":
+		f = ctc.Oto
 	case "BcstTo":
 		f = ctc.BcstTo
 	case "RegDomain":

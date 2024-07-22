@@ -124,17 +124,22 @@ contract Email {
 	mapping(string => PK) public psid2PK;
 	mapping(string => mapping(uint64 => string[])) public psid2Day2Cid;
 	mapping(string => Mail) public cid2Mail;
-	mapping(string => uint256) public cid2Money;
-	mapping(string => BcstHeader) public cid2BcstMails;
+	
+
+	//seperately store fields in dmId2Domain/dmId2PArr/dmId2QArr/dmId2Psids/StealthEncPriv/psid2DmIds can save gas cost when accessing them
 	mapping(string => Domain) public dmId2Domain;
 	mapping(string => G1Point[]) public dmId2PArr; // (g,g_1,...,g_n, g_{n+2},...,g_{2n}) and g is bn128 G1 generator 
 	mapping(string => G2Point[]) dmId2QArr; // (h,h_1,...,h_n, h_{n+2},...,h_{2n}) and h is bn128 G2 generator 	
-	mapping(string => mapping(string => StealthEncPriv)) dmId2Psid2PrivC;// ElGamal-encrypted private keys {g_i^\gamma}
 	mapping(string => string[]) dmId2Psids; // the pseudonyms of each member in the domain
-	mapping(string => uint32[]) public clsId2S;
+	mapping(string => mapping(string => StealthEncPriv)) dmId2Psid2PrivC;// ElGamal-encrypted private keys {g_i^\gamma}	
 	mapping(string => DomainId[]) public psid2DmIds;
-	mapping(string => string[]) public dm2ClsIds;
+
+	mapping(string => string[]) public dmId2ClsIds;
+	mapping(string => uint32[]) public clsId2S;	
+
 	mapping(string => string[]) public psid2TmpPsid;
+
+	mapping(string => BcstHeader) public cid2BcstMails;	
 	mapping(string => mapping(uint64 => string[])) public clsId2Day2Cid;
 
 	struct G1Point {
@@ -148,10 +153,9 @@ contract Email {
 	struct PK {
 		G1Point A;// used in stealth address generation, A= g^a
 		G1Point B;// used in stealth address generation, B= g^b
-		uint256 fee;// requested minimal fee when receiving an email
-        // An address used in receiving digital currency and it does not link to (a,b)
-		address payable wallet;
-		G1Point[] extra;// stores the stealth address information when the PK is created by others
+		uint256 fee;// requested minimal fee when receiving an email        
+		address payable wallet; // An address used in receiving digital currency
+		G1Point[] extra; // stores the stealth address information when the PK is created by others
 	}
 	struct StealthPub{
 		G1Point R; // stealth address used for verification, R =g^r
@@ -258,7 +262,7 @@ contract Email {
 	event Event(string eventName, address indexed sender, uint256 value, string fid, string[] extra);
     // event Event(string eventName, uint256 gasUsed, string[] memory extra);
 	
-	function mailTo(Mail memory mail, string memory cid, string[] memory psids) public payable {
+	function oto(Mail memory mail, string memory cid, string[] memory psids) public payable {
 		// uint256 gasAtStart = gasleft();
 		cid2Mail[cid]=mail;
 		uint64 currentTime = uint64(block.timestamp);
@@ -273,10 +277,10 @@ contract Email {
 			}
 			require(msg.value > actualValue, "Mail fees must be greater than MIN_FEE");     
 			wallet.transfer(actualValue);
-			// emit Event("mailTo", wallet, actualValue, cid,psids);
+			// emit Event("oto", wallet, actualValue, cid,psids);
 		}
 		// uint256 gasUsed = gasAtStart - gasleft(); // 计算消耗的 gas 量		
-		emit Event("mailTo", msg.sender, msg.value, cid,psids);
+		emit Event("oto", msg.sender, msg.value, cid,psids);
 
 	}
 
@@ -319,7 +323,7 @@ contract Email {
 		Domain memory dm = dmId2Domain[parts[1]];
 		if (dm.admin == msg.sender){//cluster should be built when a dm exists
 			clsId2S[clsId]= S;
-			dm2ClsIds[parts[1]].push(clsId);
+			dmId2ClsIds[parts[1]].push(clsId);
 		}
 	}
 	function getS(string memory clsId) public view returns (uint32[] memory) {
@@ -411,7 +415,7 @@ contract Email {
 	}
 
 	function getMyClusters(string memory dmId) public view returns (string[] memory) {
-		return dm2ClsIds[dmId];
+		return dmId2ClsIds[dmId];
 	}
 
 
