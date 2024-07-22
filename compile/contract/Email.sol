@@ -127,6 +127,10 @@ contract Email {
 	mapping(string => uint256) public cid2Money;
 	mapping(string => BcstHeader) public cid2BcstMails;
 	mapping(string => Domain) public dmId2Domain;
+	mapping(string => G1Point[]) public dmId2PArr; // (g,g_1,...,g_n, g_{n+2},...,g_{2n}) and g is bn128 G1 generator 
+	mapping(string => G2Point[]) dmId2QArr; // (h,h_1,...,h_n, h_{n+2},...,h_{2n}) and h is bn128 G2 generator 	
+	mapping(string => mapping(string => StealthEncPriv)) dmId2Psid2PrivC;// ElGamal-encrypted private keys {g_i^\gamma}
+	mapping(string => string[]) dmId2Psids; // the pseudonyms of each member in the domain
 	mapping(string => uint32[]) public clsId2S;
 	mapping(string => DomainId[]) public psid2DmIds;
 	mapping(string => string[]) public dm2ClsIds;
@@ -153,21 +157,23 @@ contract Email {
 		G1Point R; // stealth address used for verification, R =g^r
 		G1Point S; // stealth address and the private key s = a+ H(R^b)
 	}
-	struct ElGamalCT{
+	
+	// encrypted using a stealth address
+	struct StealthEncPriv{
+		G1Point C1; // the first part of ElGamal ciphertext
+		G1Point C2; // the second part of ElGamal ciphertext
+		G1Point R; //  Stealth address R
+		G1Point S; //  Stealth address S
+	}
+
+	struct Mail{
+		StealthPub pub;	// the receiver's stealth address
 		G1Point C1; // the first part of ElGamal ciphertext
 		G1Point C2; // the second part of ElGamal ciphertext
 	}
-	struct Mail{
-		StealthPub pub;	// the receiver's stealth address
-		ElGamalCT ct;  //ElGamal-encrypted random key {g_i^key}
-	}
 
     struct Domain {
-		G1Point[] pArr; // (g,g_1,...,g_n, g_{n+2},...,g_{2n}) and g is bn128 G1 generator 
-		G2Point[] qArr; // (h,h_1,...,h_n, h_{n+2},...,h_{2n}) and h is bn128 G2 generator 
 		G1Point v; // g^\gamma
-		ElGamalCT[] privC;// ElGamal-encrypted private keys {g_i^\gamma}
-		string[] psids; // the pseudonyms of each member in the domain
 		address admin; // creator of the domain
 	}
 	struct DomainId {
@@ -179,16 +185,13 @@ contract Email {
 		G1Point C1; // C1 of BE header
 		G2Point C0p;// identical C0, but the base is h of G2
 	}
-	struct DomainProof{
-		G1Point skipows; // ski^s, where ski is BE private key and s is a random value
-		G2Point pki; // pki, the ith BE public key
-		G1Point vpows;// v^s, with the same exponentiation with skipows
-		G1Point vpowsp;// v^{s'}, commitment of vpows in sigma protocol
-		uint256 c; // challenge value in sigma protocol
-		uint256 hatc; // response value in sigma protocol
+	struct Pi{
+		G1Point Cp;// g^{s'}, Schnorr sigma protocol commitment
+		uint256 c; // Sigma protocol challenge value 
+		uint256 ctilde; // Sigma protocol response
 	}
 
-	mapping(string => G1Point) public dmId2DomainV;
+	// mapping(string => G1Point) public dmId2DomainV;
 
 	bool public pairingRes;
 	G1Point public pointRes;
@@ -289,21 +292,18 @@ contract Email {
 		return psid2TmpPsid[psid];
 	}
 
-	function regDomain(string memory dmId, G1Point[] memory pArr, G2Point[] memory qArr, G1Point memory v, ElGamalCT[] memory privC, string[] memory psids) public payable {
-		// G1Point[] memory privC1, G1Point[] memory privC2
+	function regDomain(string memory dmId, G1Point[] memory pArr, G2Point[] memory qArr, G1Point memory v, StealthEncPriv[] memory encPriv, string[] memory psids) public payable {
 		dmId2Domain[dmId].admin = msg.sender;
-		dmId2Domain[dmId].v=G1Point(v.X,v.Y);
-		dmId2DomainV[dmId]=G1Point(v.X,v.Y);
-		for (uint i = 0; i < qArr.length; i++) {//n+1
-			dmId2Domain[dmId].qArr.push(G2Point(qArr[i].X,qArr[i].Y));
-		}
+		dmId2Domain[dmId].v=v;
 		for (uint i = 0; i < pArr.length; i++) {//2n+1
-			dmId2Domain[dmId].pArr.push(G1Point(pArr[i].X,pArr[i].Y));
+			dmId2PArr[dmId].push(pArr[i]);
 		}
-		for (uint i = 0; i < privC.length; i++) {//n
-			dmId2Domain[dmId].privC.push(ElGamalCT(G1Point(privC[i].C1.X,privC[i].C1.Y), G1Point(privC[i].C2.X,privC[i].C2.Y)));
-			// dmId2Domain[dmId].privC2.push());
-			dmId2Domain[dmId].psids.push(psids[i]);
+		for (uint i = 0; i < qArr.length; i++) {//n+1
+			dmId2QArr[dmId].push(qArr[i]);
+		}
+		for (uint i = 0; i < encPriv.length; i++) {//n
+			dmId2Psid2PrivC[dmId][psids[i]]=encPriv[i];
+			dmId2Psids[dmId].push(psids[i]);
 			psid2DmIds[psids[i]].push(DomainId(i+1,dmId));
 		}
 	}
@@ -312,37 +312,23 @@ contract Email {
 	function regCluster(string memory clsId, uint32[] memory S) public payable {
 		string[] memory parts = splitAt(clsId);
 		Domain memory dm = dmId2Domain[parts[1]];
-		if (dm.admin == msg.sender && dm.pArr.length > 0){//cluster should be built when a dm exists
+		if (dm.admin == msg.sender){//cluster should be built when a dm exists
 			clsId2S[clsId]= S;
 			dm2ClsIds[parts[1]].push(clsId);
 		}
 	}
 	function getS(string memory clsId) public view returns (uint32[] memory) {
-		// string[] memory parts = splitAt(clsId);		
-		// return dmId2Domain[parts[1]].pArr.length;
 		return clsId2S[clsId];
 	}
 
-	function getBrdEncPrivs(string memory dmId,string memory psid) public view returns (uint, ElGamalCT memory) {
-		ElGamalCT memory ct;
-		uint index;
-		for (uint i = 0; i < dmId2Domain[dmId].privC.length; i++) {
-			string memory psidBC = dmId2Domain[dmId].psids[i];
-			if(keccak256(abi.encodePacked(psidBC)) == keccak256(abi.encodePacked(psid))){
-				ct = dmId2Domain[dmId].privC[i];
-				index=i;
-				break;
-			}
-		}
-		return (index,ct);
+	function getBrdEncPrivs(string memory dmId, string memory psid) public view returns (StealthEncPriv memory) {
+		return dmId2Psid2PrivC[dmId][psid];
 	}
 	function getBrdPKs(string memory dmId) public view returns (G1Point[] memory,G2Point[] memory, G1Point memory) {
-		return (dmId2Domain[dmId].pArr, dmId2Domain[dmId].qArr, dmId2Domain[dmId].v);
+		return (dmId2PArr[dmId], dmId2QArr[dmId], dmId2Domain[dmId].v);
 	}
 	
-	function bcstTo(BcstHeader memory hdr, string memory clsId, DomainProof memory pi, string memory cid) public payable returns (bool) {
-		string[] memory parts = splitAt(clsId);		
-		G1Point memory v = dmId2DomainV[parts[1]];
+	function bcstTo(BcstHeader memory hdr, string memory clsId, Pi memory pi, string memory cid, string memory psid) public payable returns (bool) {
 		
 		
 		// the fees can be put into a buffer, we comment it when testing the gas consumption 
@@ -357,17 +343,11 @@ contract Email {
 		// 	require(msg.value >= n*actualValue, "Broadcast fees must be greater than n*MIN_FEE");     
 		// 	pk.wallet.transfer(actualValue);
 		// }
-
-		G1Point[] memory p1Arr = new G1Point[](2);
-		G2Point[] memory p2Arr = new G2Point[](2);
-		p1Arr[0] = negate(pi.skipows);
-		p1Arr[1] = pi.vpows;
-		p2Arr[0] = G2;
-		p2Arr[1] = pi.pki;
-
-		// pointRes = g1mul(dm.v, pi.hatc);
 		
-		if(pairing(p1Arr, p2Arr) && equals(g1add(g1mul(pi.vpows, pi.c), g1mul(v, pi.hatc)), pi.vpowsp)) {
+		string[] memory parts = splitAt(clsId);
+		StealthEncPriv memory saEncPriv = dmId2Psid2PrivC[parts[1]][psid];
+		// saEncPriv.S is psid's public key
+		if(equals(g1add(g1mul(saEncPriv.S, pi.c), g1mul(P1(), pi.ctilde)), pi.Cp)) {
 			// pairingRes= true;//cost ~20000 gas	
 			uint64 currentTime = uint64(block.timestamp);
 			uint64 day = currentTime - (currentTime % 86400);
@@ -378,7 +358,7 @@ contract Email {
 		}else{
 			return false;
 		}
-		return false;
+		// return false;
 		
 	}
 	function getPoint() public view returns (G1Point memory) {		

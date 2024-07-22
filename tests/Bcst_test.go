@@ -62,11 +62,12 @@ func TestBcstOneshotCluster(t *testing.T) {
 
 	fmt.Println("\n\n=============================Bob creates temperory domain and cluster =====================")
 	createdUsers, createdClsId, ClS := utils.CreateTempCluster(client, ctc, users[0], psids)
+	tmpUser := utils.ResolveTmpUser(ctc, users[0].Psid, users[0].Aa, users[0].Bb, users[0].Addr, 0)
 	fmt.Printf("domain size: %d, cluster size:%d\n", len(createdUsers), len(ClS))
 	for i := 0; i < 3; i++ {
 		fmt.Println("=============================Bob broadcast =====================", i)
-		msgCreated := []byte("Dear there, run -------by " + createdUsers[0].Psid)
-		utils.BroadcastTo(client, ctc, createdUsers[0], msgCreated, createdClsId)
+		msgCreated := []byte("Dear there, run -------by " + tmpUser[0].Psid)
+		utils.BroadcastTo(client, ctc, tmpUser[0], msgCreated, createdClsId)
 	}
 
 	//Alice is a cluster and ties to read the email
@@ -76,10 +77,10 @@ func TestBcstOneshotCluster(t *testing.T) {
 		num = 10
 	}
 	for j := 0; j < num; j++ {
-		User := utils.ResolveUser(ctc, psids[j], users[j].Aa, users[j].Bb, users[j].Privatekey, users[j].Addr)
-		TmpUsers := utils.ResolveTmpUser(ctc, User.Psid, User.Aa, User.Bb, User.Addr)
-		for i := 0; i < len(TmpUsers); i++ {
-			utils.ReadBrdMail(ctc, TmpUsers[i])
+		user := utils.ResolveUser(ctc, psids[j], users[j].Aa, users[j].Bb, users[j].Privatekey, users[j].Addr)
+		tmpUsers := utils.ResolveTmpUser(ctc, user.Psid, user.Aa, user.Bb, user.Addr, j)
+		for i := 0; i < len(tmpUsers); i++ {
+			utils.ReadBrdMail(ctc, tmpUsers[i])
 		}
 	}
 }

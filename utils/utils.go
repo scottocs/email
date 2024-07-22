@@ -197,9 +197,7 @@ func CreateTempCluster(client *ethclient.Client, ctc *contract.Contract, from Us
 		domain[dmId] = Domain{brdPks, brdPrivs[i+1], Smap}
 
 		tmpPsid := psids[i] + "@" + clusterId
-		privateKey := from.Privatekey //TODO Alice is user creator?
-
-		users[i] = User{tmpPsid, nil, nil, sa1.S, sa2.S, privateKey, "", domain}
+		users[i] = User{tmpPsid, nil, nil, sa1.S, sa2.S, "", "", domain}
 		//fmt.Println("11111111", clusterId, dmId, users[i].Domains[dmId].Clusters[clusterId])
 		//ptr := users[i].Domains[dmId].SK.Di
 		addr := common.BytesToAddress(([]byte)(users[i].Addr))
