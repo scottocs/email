@@ -4,9 +4,10 @@ import time
 w3=web3.Web3(web3.HTTPProvider('http://127.0.0.1:8545', request_kwargs={'timeout': 60 * 10}))
 
 contract_abi = open("./compile/contract/Email.abi",'r').read()
-# "CONTRACT_ADDRES"
 
-
+# import os
+# os.system("pip3 install py-solc-x==2.0.2")
+# os.system("pip3 install web3==6.15.1")
 
 import time
 from watchdog.observers import Observer
@@ -26,7 +27,7 @@ class MyHandler(FileSystemEventHandler):
         contract_address=open(event.src_path,'r').read()
         contract = w3.eth.contract(address=contract_address, abi=contract_abi)
         self.message_event = contract.events.Event()
-        self.block_filter = w3.eth.filter({'fromBlock': 50, 'address': contract_address})
+        self.block_filter = w3.eth.filter({'fromBlock': 1, 'address': contract_address})
 
         threading.Thread(target=self.process_event, args=(event,)).start()
 
@@ -37,11 +38,13 @@ class MyHandler(FileSystemEventHandler):
             for entry in entries:
                 # print(f"block_filter_length: {len(entries)}")
                 receipt = w3.eth.wait_for_transaction_receipt(entry['transactionHash'])
-                result = self.message_event.processReceipt(receipt)
+                # print(dir(self.message_event))
+                result = self.message_event.process_receipt(receipt)
                 
-                obj=result[0].args
-                res="event:"+obj.eventName+", sender:"+obj.sender+", value:"+str(obj.value)+", cid/psid:"+obj.fid+", extra:"+str(obj.extra)+"\n"
-                print(res)
+                for i in range(0, len(result)):
+                    obj=result[i].args
+                    res="event:"+obj.eventName+", sender:"+obj.sender+", value:"+str(obj.value)+", field:"+obj.fid+", extra:"+str(obj.extra)+"\n"
+                    print(res)
             time.sleep(1)
         
 

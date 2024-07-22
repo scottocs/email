@@ -174,7 +174,9 @@ contract Email {
 
     struct Domain {
 		G1Point v; // g^\gamma
-		address admin; // creator of the domain
+		address payable admin; // creator of the domain
+		uint256 fee;
+		uint256 deposits;
 	}
 	struct DomainId {
 		uint index; // the index in the domain
@@ -190,8 +192,6 @@ contract Email {
 		uint256 c; // Sigma protocol challenge value 
 		uint256 ctilde; // Sigma protocol response
 	}
-
-	// mapping(string => G1Point) public dmId2DomainV;
 
 	bool public pairingRes;
 	G1Point public pointRes;
@@ -273,6 +273,7 @@ contract Email {
 			}
 			require(msg.value > actualValue, "Mail fees must be greater than MIN_FEE");     
 			wallet.transfer(actualValue);
+			// emit Event("mailTo", wallet, actualValue, cid,psids);
 		}
 		// uint256 gasUsed = gasAtStart - gasleft(); // 计算消耗的 gas 量		
 		emit Event("mailTo", msg.sender, msg.value, cid,psids);
@@ -293,7 +294,8 @@ contract Email {
 	}
 
 	function regDomain(string memory dmId, G1Point[] memory pArr, G2Point[] memory qArr, G1Point memory v, StealthEncPriv[] memory encPriv, string[] memory psids) public payable {
-		dmId2Domain[dmId].admin = msg.sender;
+		dmId2Domain[dmId].admin = payable(msg.sender);
+		dmId2Domain[dmId].fee = 0;
 		dmId2Domain[dmId].v=v;
 		for (uint i = 0; i < pArr.length; i++) {//2n+1
 			dmId2PArr[dmId].push(pArr[i]);
@@ -305,6 +307,9 @@ contract Email {
 			dmId2Psid2PrivC[dmId][psids[i]]=encPriv[i];
 			dmId2Psids[dmId].push(psids[i]);
 			psid2DmIds[psids[i]].push(DomainId(i+1,dmId));
+			PK memory pk = psid2PK[psids[i]];
+			dmId2Domain[dmId].fee+=pk.fee;
+			dmId2Domain[dmId].deposits=0;
 		}
 	}
 
@@ -328,23 +333,16 @@ contract Email {
 		return (dmId2PArr[dmId], dmId2QArr[dmId], dmId2Domain[dmId].v);
 	}
 	
+	receive() external payable {
+        emit Event("receive", msg.sender, msg.value, "", new string[](0));
+    }
 	function bcstTo(BcstHeader memory hdr, string memory clsId, Pi memory pi, string memory cid, string memory psid) public payable returns (bool) {
-		
-		
-		// the fees can be put into a buffer, we comment it when testing the gas consumption 
-		// string[] memory psids = dm.psids;	
-		// uint n =  psids.length;	
-		// for (uint i = 0; i < n; i++) {
-		// 	PK memory pk = psid2PK[psids[i]];
-		// 	uint256 actualValue = msg.value/n;
-		// 	if (actualValue < MIN_FEE){
-		// 		actualValue = MIN_FEE;
-		// 	}
-		// 	require(msg.value >= n*actualValue, "Broadcast fees must be greater than n*MIN_FEE");     
-		// 	pk.wallet.transfer(actualValue);
-		// }
-		
 		string[] memory parts = splitAt(clsId);
+		require(msg.value > dmId2Domain[parts[1]].fee, "Broadcast fees must be greater than required");     
+		dmId2Domain[parts[1]].deposits += msg.value;
+		// address payable wallet = dmId2Domain[parts[1]].admin;
+		// wallet.transfer(msg.value);
+
 		StealthEncPriv memory saEncPriv = dmId2Psid2PrivC[parts[1]][psid];
 		// saEncPriv.S is psid's public key
 		if(equals(g1add(g1mul(saEncPriv.S, pi.c), g1mul(P1(), pi.ctilde)), pi.Cp)) {
@@ -358,8 +356,34 @@ contract Email {
 		}else{
 			return false;
 		}
-		// return false;
+		// return false;		
+	}
+	function reward(string memory dmId)  public payable {
+		// // the fees can be put into a deposit (buffer), we comment it when testing the gas consumption 				
+		string[] memory psids = dmId2Psids[dmId];		
+		uint256 totalFee = dmId2Domain[dmId].deposits;
 		
+		if (totalFee<=0){
+			return;
+		}
+		
+		uint n =  psids.length;	
+		uint256 total = 0;
+		for (uint i = 0; i < n; i++) {
+			PK memory pk = psid2PK[psids[i]];
+			total+= pk.fee;
+		}
+		
+
+		dmId2Domain[dmId].deposits=0;
+		for (uint i = 0; i < n; i++) {
+			PK memory pk = psid2PK[psids[i]];
+			uint256 val = totalFee/total * pk.fee;
+			address payable wallet = psid2PK[psids[i]].wallet;
+			// address payable wallet = pk.wallet;
+			wallet.transfer(val);			
+		}
+		emit Event("withdraw", dmId2Domain[dmId].admin, address(this).balance, dmId, new string[](0));
 	}
 	function getPoint() public view returns (G1Point memory) {		
 		return pointRes;

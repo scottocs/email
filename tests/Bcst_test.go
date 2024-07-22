@@ -4,6 +4,7 @@ import (
 	"email/crypto/broadcast"
 	"email/utils"
 	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -54,6 +55,10 @@ func TestBcstLinkableCluster(t *testing.T) {
 	indexAlice := 1
 	Alice := utils.ResolveUser(ctc, "Alice", users[indexAlice].Aa, users[indexAlice].Bb, users[indexAlice].Privatekey, users[indexAlice].Addr)
 	utils.ReadBrdMail(ctc, Alice)
+
+	fmt.Println("=============================withdraw deposited money=====================")
+	utils.Reward(client, ctc, Alice, domainId)
+	//utils.Reward(client, ctc, Alice, domainId)
 }
 
 func TestBcstOneshotCluster(t *testing.T) {
@@ -83,4 +88,8 @@ func TestBcstOneshotCluster(t *testing.T) {
 			utils.ReadBrdMail(ctc, tmpUsers[i])
 		}
 	}
+
+	fmt.Println("=============================withdraw deposited money=====================")
+	_2dmId := strings.Split(createdClsId, "@")
+	utils.Reward(client, ctc, tmpUser[0], _2dmId[1])
 }

@@ -310,12 +310,15 @@ func ReadBrdMail(ctc *contract.Contract, created User) {
 				} else {
 					fmt.Println(created.Psid + " is \033[31m not \033[0m in the cluster.")
 				}
-
 			}
 
 		}
 	}
 
+}
+func Reward(client *ethclient.Client, ctc *contract.Contract, sender User, dmId string) {
+	para := []interface{}{"Reward", dmId}
+	_ = Transact(client, sender.Privatekey, big.NewInt(0), ctc, para).(*types.Receipt)
 }
 
 // construct a transaction
@@ -387,8 +390,8 @@ func Transact(client *ethclient.Client, privatekey string, value *big.Int, ctc *
 	// 	f = ctc.LinkTmpPsid
 	case "GetTmpPsid":
 		f = ctc.GetTmpPsid
-		//case "SplitAt":
-		//	f = ctc.SplitAt
+	case "Reward":
+		f = ctc.Reward
 	}
 
 	// 获取函数的反射值
