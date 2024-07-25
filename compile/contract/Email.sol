@@ -140,13 +140,15 @@ contract Email {
 	mapping(string => G2Point[]) dmId2QArr; // (h,h_1,...,h_n, h_{n+2},...,h_{2n}) on G2
 	mapping(string => string[]) dmId2Psids; // the pseudonyms of each member in the domain
 	mapping(string => mapping(string => StealthEncPriv)) dmId2Psid2PrivC;// ElGamal-encrypted private keys {g_i^\gamma}	
+	mapping(string => StealthPub[]) dmId2SAPubs;
+	mapping(uint => bool) SAPubS2SAPubR;
+	mapping(uint256 => bool) Pi2Used;
 	mapping(string => DomainId[]) psid2DmIds;
 
 	mapping(string => string[]) dmId2ClsIds;
 	mapping(string => EncClS) clsId2EncS;	
 
-	mapping(string => string[]) psid2TmpPsid;
-
+	
 	mapping(string => BcstHeader) cid2BcstMails;	
 	mapping(string => mapping(uint64 => string[])) clsId2Day2Cid;
 
@@ -168,8 +170,6 @@ contract Email {
 	struct StealthEncPriv{
 		G1Point C1; // the first part of ElGamal ciphertext
 		G1Point C2; // the second part of ElGamal ciphertext
-		G1Point R; //  Stealth address R
-		G1Point S; //  Stealth address S
 	}
 
 	struct Mail{
@@ -243,7 +243,7 @@ contract Email {
 	) pure internal returns (bool) {		
 		return a.X==b.X && a.Y==b.Y;
 	}
-	function register(string memory psid, PK memory pk, string memory oriPsid) public payable returns (PK memory)  {
+	function register(string memory psid, PK memory pk) public payable returns (PK memory)  {
 		require(psid2PK[psid].A.X == 0, "psid exists.");
 
 		if (psid2PK[psid].A.X == 0) {
@@ -255,10 +255,6 @@ contract Email {
 				psid2PK[psid].extra.push(G1Point(pk.extra[i].X,pk.extra[i].Y));
 			}
 			
-		}
-		// this is used for tempoarily created psid
-		if(bytes(oriPsid).length != 0){
-			psid2TmpPsid[oriPsid].push(psid);
 		}
 		return psid2PK[psid];
 	}
@@ -300,11 +296,8 @@ contract Email {
 		return (cids, mails);
 	}
 
-	function getTmpPsid(string memory psid) public view returns (string[] memory) {
-		return psid2TmpPsid[psid];
-	}
-
-	function regDomain(string memory dmId, G1Point[] memory pArr, G2Point[] memory qArr, G1Point memory v, StealthEncPriv[] memory encPriv, string[] memory psids) public payable {
+	
+	function regDomain(string memory dmId, G1Point[] memory pArr, G2Point[] memory qArr, G1Point memory v, StealthEncPriv[] memory encPriv, string[] memory psids, StealthPub[] memory saPubs) public payable {
 		dmId2Domain[dmId].admin = payable(msg.sender);
 		dmId2Domain[dmId].fee = 0;
 		dmId2Domain[dmId].v=v;
@@ -315,7 +308,10 @@ contract Email {
 			dmId2QArr[dmId].push(qArr[i]);
 		}
 		for (uint i = 0; i < encPriv.length; i++) {//n
+			// note that saPubs and psids are not linked
 			dmId2Psid2PrivC[dmId][psids[i]]=encPriv[i];
+			dmId2SAPubs[dmId].push(saPubs[i]);
+			SAPubS2SAPubR[saPubs[i].S.X] = true;// to enable quick query
 			dmId2Psids[dmId].push(psids[i]);
 			psid2DmIds[psids[i]].push(DomainId(i+1,dmId));
 			PK memory pk = psid2PK[psids[i]];
@@ -337,26 +333,23 @@ contract Email {
 		return clsId2EncS[clsId];
 	}
 
-	function getBrdEncPrivs(string memory dmId, string memory psid) public view returns (StealthEncPriv memory) {
-		return dmId2Psid2PrivC[dmId][psid];
+	function getBrdEncPrivs(string memory dmId, string memory psid) public view returns (StealthEncPriv memory, StealthPub[] memory) {
+		return (dmId2Psid2PrivC[dmId][psid], dmId2SAPubs[dmId]);
 	}
 	function getBrdPKs(string memory dmId) public view returns (G1Point[] memory,G2Point[] memory, G1Point memory) {
 		return (dmId2PArr[dmId], dmId2QArr[dmId], dmId2Domain[dmId].v);
 	}
 	
 	receive() external payable {
-        emit Event("receive", msg.sender, msg.value, "", new string[](0));
+        emit Event("contract_receive", msg.sender, msg.value, "", new string[](0));
     }
-	function bcstTo(BcstHeader memory hdr, string memory clsId, Pi memory pi, string memory cid, string memory psid) public payable returns (bool) {
+	function bcstTo(BcstHeader memory hdr, string memory clsId, Pi memory pi, string memory cid, G1Point memory SAPubS) public payable returns (bool) {
 		string[] memory parts = splitAt(clsId);
 		require(msg.value > dmId2Domain[parts[1]].fee, "Broadcast fees must be greater than required");     
 		dmId2Domain[parts[1]].deposits += msg.value;
-		// address payable wallet = dmId2Domain[parts[1]].admin;
-		// wallet.transfer(msg.value);
+		// msg.value is automatically tranferred to the contract
 
-		StealthEncPriv memory saEncPriv = dmId2Psid2PrivC[parts[1]][psid];
-		// saEncPriv.S is psid's public key
-		if(equals(g1add(g1mul(saEncPriv.S, pi.c), g1mul(P1(), pi.ctilde)), pi.Cp)) {
+		if(Pi2Used[pi.c]!=true && SAPubS2SAPubR[SAPubS.X] && equals(g1add(g1mul(SAPubS, pi.c), g1mul(P1(), pi.ctilde)), pi.Cp)) {
 			// pairingRes= true;//cost ~20000 gas	
 			uint64 currentTime = uint64(block.timestamp);
 			uint64 day = currentTime - (currentTime % 86400);
@@ -364,6 +357,7 @@ contract Email {
 			clsId2Day2Cid[clsId][day].push(cid);
 			string[] memory res = new string[](1);
 			res[0]=string(clsId);
+			Pi2Used[pi.c]=true;
 			emit Event("bcstTo", msg.sender, msg.value, cid, res);
 			return true;
 		}else{

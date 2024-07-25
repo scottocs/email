@@ -63,7 +63,7 @@ func DeployAndInitWallet() ([]User, *ethclient.Client, *contract.Contract) {
 		publicKey := key.Public()
 		publicKeyECDSA, _ := publicKey.(*ecdsa.PublicKey)
 		addr := crypto.PubkeyToAddress(*publicKeyECDSA)
-		para := []interface{}{"Register", names[i], contract.EmailPK{G1ToPoint(A), G1ToPoint(B), ether01, addr, make([]contract.EmailG1Point, 0)}, ""}
+		para := []interface{}{"Register", names[i], contract.EmailPK{G1ToPoint(A), G1ToPoint(B), ether01, addr, make([]contract.EmailG1Point, 0)}}
 		_ = Transact(client, privatekey, big.NewInt(0), ctc, para).(*types.Receipt)
 		var domains = make(map[string]Domain)
 		users[i] = User{names[i], a, b, A, B, privatekey, addr.String(), domains}
@@ -132,25 +132,27 @@ func RegCluster(client *ethclient.Client, ctc *contract.Contract, from User, cls
 	_ = Transact(client, from.Privatekey, big.NewInt(0), ctc, para).(*types.Receipt)
 }
 
-func RegDomain(client *ethclient.Client, ctc *contract.Contract, from User, cpk broadcast.PKs, brdPrivs []broadcast.SK, users []User) {
+func RegDomain(client *ethclient.Client, ctc *contract.Contract, from User, cpk broadcast.PKs, brdPrivs []broadcast.SK, psids []string) {
 
-	encPrivs := make([]contract.EmailStealthEncPriv, len(users))
-	psids := make([]string, len(brdPrivs))
-	for i := 0; i < len(users); i++ {
-		pkRes, _ := ctc.GetPK(&bind.CallOpts{}, users[i].Psid)
+	encPrivs := make([]contract.EmailStealthEncPriv, len(psids))
+	saPubs := make([]contract.EmailStealthPub, len(psids))
+	//psids := make([]string, len(brdPrivs))
+	for i := 0; i < len(psids); i++ {
+		pkRes, _ := ctc.GetPK(&bind.CallOpts{}, psids[i])
 		sa := stealth.CalculatePub(stealth.PublicKey{PointToG1(pkRes.A), PointToG1(pkRes.B)})
 		// ElGamal encrypted using a stealth address
 		r, _ := rand.Int(rand.Reader, bn256.Order)
 		encPrivs[i].C1 = G1ToPoint(new(bn256.G1).ScalarBaseMult(r))
 		encPrivs[i].C2 = G1ToPoint(new(bn256.G1).Add(new(bn256.G1).ScalarMult(sa.S, r), &brdPrivs[i+1].Di))
-		encPrivs[i].R = G1ToPoint(sa.R)
-		encPrivs[i].S = G1ToPoint(sa.S)
-		psids[i] = users[i].Psid
+		saPubs[i].R = G1ToPoint(sa.R)
+		saPubs[i].S = G1ToPoint(sa.S)
+		//psids[i] = users[i].Psid
 		//fmt.Println("------------", psids[i], cts[i].C1, len(cts), len(psids))
 	}
+	shuffleSApubs(saPubs)
 	//fmt.Println(len(cpk.PArr), len(cpk.QArr), len(users)) //2n+1,n+1,n
 	para := []interface{}{"RegDomain", cpk.DmId, G1ArrToPoints(cpk.PArr), G2ArrToPoints(cpk.QArr),
-		G1ToPoint(&cpk.V), encPrivs, psids}
+		G1ToPoint(&cpk.V), encPrivs, psids, saPubs}
 	//fmt.Printf("%v", para)
 	_ = Transact(client, from.Privatekey, big.NewInt(0), ctc, para).(*types.Receipt)
 }
@@ -162,65 +164,6 @@ func RegDomain(client *ethclient.Client, ctc *contract.Contract, from User, cpk 
 //		//fmt.Println(S)
 //		brdPks := broadcast.PKs{PointsToG1(pArr), PointsToG2(qArr), *PointToG1(v), dmId}
 //	}
-
-func ResolveTmpUser(ctc *contract.Contract, psid string, Aa *big.Int, Bb *big.Int, wallet string, idx int) []User {
-	tmpPsids, _ := ctc.GetTmpPsid(&bind.CallOpts{}, psid)
-	users := make([]User, 0)
-	for i := 0; i < len(tmpPsids); i++ {
-		DomainIds, _ := ctc.GetMyDomains(&bind.CallOpts{}, tmpPsids[i])
-		var domains = make(map[string]Domain)
-		pkRes, _ := ctc.GetPK(&bind.CallOpts{}, tmpPsids[i])
-		S1 := PointToG1(pkRes.A)
-		S2 := PointToG1(pkRes.B)
-		R1 := PointToG1(pkRes.Extra[0])
-		R2 := PointToG1(pkRes.Extra[1])
-		a := stealth.ResolvePriv(stealth.SecretKey{Aa, Bb}, stealth.StealthPub{R1, S1})
-		b := stealth.ResolvePriv(stealth.SecretKey{Aa, Bb}, stealth.StealthPub{R2, S2})
-
-		privatekey := GetENV("PRIVATE_KEY_" + strconv.Itoa(idx%10+1))
-		user := User{tmpPsids[i], a, b, new(bn256.G1).ScalarBaseMult(a),
-			new(bn256.G1).ScalarBaseMult(b), privatekey, wallet, domains}
-		for k := 0; k < len(DomainIds); k++ {
-			dmId := DomainIds[k].DmId
-			index := DomainIds[k].Index
-			encPrivs, _ := ctc.GetBrdEncPrivs(&bind.CallOpts{}, dmId, user.Psid)
-
-			priv := stealth.ResolvePriv(stealth.SecretKey{user.Aa, user.Bb}, stealth.StealthPub{PointToG1(encPrivs.R), PointToG1(encPrivs.S)})
-			//ElGamal Decryption
-			c1pNeg := new(bn256.G1).Neg(PointToG1(encPrivs.C1))
-			myBrdPriv := new(bn256.G1).Add(PointToG1(encPrivs.C2), new(bn256.G1).ScalarMult(c1pNeg, priv))
-			//fmt.Println("Aa hash", stealth.Hash2Int(new(bn256.G1).ScalarMult(sa1R, my.Bb).String()))
-			//fmt.Println("222222222", dmId, myBrdPriv.String()[:30])
-			user.Domains = make(map[string]Domain)
-			pArr, qArr, v, _ := ctc.GetBrdPKs(&bind.CallOpts{}, dmId)
-			brdPks := broadcast.PKs{PointsToG1(pArr), PointsToG2(qArr), *PointToG1(v), dmId}
-			var clsIds = map[string][]uint32{}
-			clsIdsDL, _ := ctc.GetMyClusters(&bind.CallOpts{}, dmId)
-			user.Domains[dmId] = Domain{brdPks, broadcast.SK{int(index.Int64()), *myBrdPriv}, clsIds}
-
-			NArr := make([]uint32, len(qArr)-1)
-			for j := 0; j < len(NArr); j++ {
-				NArr[j] = uint32(j + 1)
-			}
-
-			for j := 0; j < len(clsIdsDL); j++ {
-				clsId := clsIdsDL[j]
-				EncClS, _ := ctc.GetEncClS(&bind.CallOpts{}, clsId)
-				sk := user.Domains[dmId].SK
-
-				beKp := sk.Decrypt(NArr, broadcast.Header{PointToG1(EncClS.Hdr.C0), PointToG2(EncClS.Hdr.C0p), PointToG1(EncClS.Hdr.C1)}, user.Domains[dmId].PKs)
-				ClSStr, _ := aes.Decrypt(EncClS.Str, beKp.Marshal()[:32])
-				var ClS []uint32
-				json.Unmarshal([]byte(ClSStr), &ClS)
-				clsIds[clsId] = ClS
-			}
-			user.Domains[dmId] = Domain{brdPks, broadcast.SK{int(index.Int64()), *myBrdPriv}, clsIds}
-		}
-		//fmt.Println("user", user)
-		users = append(users, user)
-	}
-	return users
-}
 
 func ResolveUser(ctc *contract.Contract, psid string, Aa *big.Int, Bb *big.Int, priStr string, addr string) User {
 	DomainIds, _ := ctc.GetMyDomains(&bind.CallOpts{}, psid)
@@ -234,9 +177,15 @@ func ResolveUser(ctc *contract.Contract, psid string, Aa *big.Int, Bb *big.Int, 
 		pArr, qArr, v, _ := ctc.GetBrdPKs(&bind.CallOpts{}, dmId)
 		brdPks := broadcast.PKs{PointsToG1(pArr), PointsToG2(qArr), *PointToG1(v), dmId}
 
-		encPrivs, _ := ctc.GetBrdEncPrivs(&bind.CallOpts{}, dmId, user.Psid)
-
-		priv := stealth.ResolvePriv(stealth.SecretKey{user.Aa, user.Bb}, stealth.StealthPub{PointToG1(encPrivs.R), PointToG1(encPrivs.S)})
+		encPrivs, saPubs, _ := ctc.GetBrdEncPrivs(&bind.CallOpts{}, dmId, user.Psid)
+		var priv *big.Int
+		for _, sapub := range saPubs {
+			priv = stealth.ResolvePriv(stealth.SecretKey{user.Aa, user.Bb}, stealth.StealthPub{PointToG1(sapub.R), PointToG1(sapub.S)})
+			if priv != nil {
+				break
+			}
+		}
+		//priv := stealth.ResolvePriv(stealth.SecretKey{user.Aa, user.Bb}, stealth.StealthPub{PointToG1(encPrivs.R), PointToG1(encPrivs.S)})
 		//ElGamal Decryption
 		c1pNeg := new(bn256.G1).Neg(PointToG1(encPrivs.C1))
 		myBrdPriv := new(bn256.G1).Add(PointToG1(encPrivs.C2), new(bn256.G1).ScalarMult(c1pNeg, priv))
@@ -282,9 +231,17 @@ func BroadcastTo(client *ethclient.Client, ctc *contract.Contract, sender User, 
 	//x, _ := rand.Int(rand.Reader, bn256.Order)
 	r, _ := rand.Int(rand.Reader, bn256.Order)
 	//senderIndex := sender.Domains[dmId].SK.I
-	encPrivs, _ := ctc.GetBrdEncPrivs(&bind.CallOpts{}, dmId, sender.Psid)
-	priv := stealth.ResolvePriv(stealth.SecretKey{sender.Aa, sender.Bb}, stealth.StealthPub{PointToG1(encPrivs.R), PointToG1(encPrivs.S)})
-	SAPK := PointToG1(encPrivs.S)
+	_, saPubs, _ := ctc.GetBrdEncPrivs(&bind.CallOpts{}, dmId, sender.Psid)
+	var priv *big.Int
+	var SAPK *bn256.G1
+	//:= PointToG1(encPrivs.S)
+	for _, sapub := range saPubs {
+		priv = stealth.ResolvePriv(stealth.SecretKey{sender.Aa, sender.Bb}, stealth.StealthPub{PointToG1(sapub.R), PointToG1(sapub.S)})
+		if priv != nil {
+			SAPK = PointToG1(sapub.S)
+			break
+		}
+	}
 	//fmt.Printf("encPrivs.R: %v\n", PointToG1(encPrivs.R).String())
 	Cp := new(bn256.G1).ScalarMult(&brdPKs.PArr[0], r)
 	hash := sha256.Sum256([]byte(SAPK.String() + Cp.String()))
@@ -298,7 +255,7 @@ func BroadcastTo(client *ethclient.Client, ctc *contract.Contract, sender User, 
 	clusterHdr := contract.EmailBcstHeader{G1ToPoint(hdr.C0), G1ToPoint(hdr.C1), G2ToPoint(hdr.C0p)}
 	// schnorr sigma protocol verification
 	// fmt.Printf("point %v %v %v %v\n", proof, cid, clusterId, clusterRecivers)
-	para := []interface{}{"BcstTo", clusterHdr, clusterId, proof, cid, sender.Psid}
+	para := []interface{}{"BcstTo", clusterHdr, clusterId, proof, cid, G1ToPoint(SAPK)}
 	ether := big.NewInt(1000000000000000000)
 	ether100 := big.NewInt(1).Mul(ether, big.NewInt(100))
 	_ = Transact(client, sender.Privatekey, ether100, ctc, para).(*types.Receipt)
@@ -307,8 +264,8 @@ func BroadcastTo(client *ethclient.Client, ctc *contract.Contract, sender User, 
 	return cid
 }
 
-func ReadBrdMail(ctc *contract.Contract, created User) {
-	DomainIds, _ := ctc.GetMyDomains(&bind.CallOpts{}, created.Psid)
+func ReadBrdMail(ctc *contract.Contract, user User) {
+	DomainIds, _ := ctc.GetMyDomains(&bind.CallOpts{}, user.Psid)
 	for i := 0; i < len(DomainIds); i++ {
 		dmId := DomainIds[i].DmId
 		clsIdsDL, _ := ctc.GetMyClusters(&bind.CallOpts{}, dmId)
@@ -325,11 +282,11 @@ func ReadBrdMail(ctc *contract.Contract, created User) {
 				brdHdr := brdHdrs[k]
 				hdr := broadcast.Header{PointToG1(brdHdr.C0), PointToG2(brdHdr.C0p), PointToG1(brdHdr.C1)}
 				//ptr := my.Domains[dmId].SK
-				sk := created.Domains[dmId].SK
-				beKp := sk.Decrypt(created.Domains[dmId].Clusters[clusterId], hdr, created.Domains[dmId].PKs)
+				sk := user.Domains[dmId].SK
+				beKp := sk.Decrypt(user.Domains[dmId].Clusters[clusterId], hdr, user.Domains[dmId].PKs)
 				//V := created.Domains[dmId].PKs.V
 				//fmt.Println(i, "beKp", created.Domains[dmId].Clusters[clusterId], dmId, beKp.String()[:30])
-				dir := GetGoModPath() + "/users/" + created.Psid + "/"
+				dir := GetGoModPath() + "/users/" + user.Psid + "/"
 				EnsureDir(dir)
 				//os.MkdirAll(dir, os.ModePerm)
 				GetIPFSClient().Get(cid, dir)
@@ -337,9 +294,9 @@ func ReadBrdMail(ctc *contract.Contract, created User) {
 				content, _ := io.ReadAll(file)
 				decRes, _ := aes.Decrypt(string(content), beKp.Marshal()[:32])
 				if isPrintable(decRes) {
-					fmt.Println(created.Psid + " Read email: \033[34m" + decRes + "\033[0m")
+					fmt.Println(user.Psid + " Read email: \033[34m" + decRes + "\033[0m")
 				} else {
-					fmt.Println(created.Psid + " is \033[31m not \033[0m in the cluster.")
+					fmt.Println(user.Psid + " is \033[31m not \033[0m in the cluster.")
 				}
 			}
 
@@ -417,10 +374,6 @@ func Transact(client *ethclient.Client, privatekey string, value *big.Int, ctc *
 		f = ctc.RegCluster
 	case "GetBrdEncPrivs":
 		f = ctc.GetBrdEncPrivs
-	// case "LinkTmpPsid":
-	// 	f = ctc.LinkTmpPsid
-	case "GetTmpPsid":
-		f = ctc.GetTmpPsid
 	case "Reward":
 		f = ctc.Reward
 	}

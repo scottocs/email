@@ -5,7 +5,6 @@ package stealth
 
 import (
 	"crypto/rand"
-	"fmt"
 	"github.com/fentec-project/bn256"
 	"golang.org/x/crypto/sha3"
 	"math/big"
@@ -54,7 +53,7 @@ func ResolvePriv(priv SecretKey, stealth StealthPub) *big.Int {
 	Sp := new(bn256.G1).ScalarBaseMult(s)
 
 	if stealth.S.String() != Sp.String() {
-		fmt.Println("stealth address is wrong, no secret is generated")
+		//fmt.Println("stealth address is wrong, no secret is generated")
 		return nil
 	}
 	return s

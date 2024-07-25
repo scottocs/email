@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/fentec-project/bn256"
@@ -159,6 +158,13 @@ func shuffle(arr []uint32) {
 	})
 }
 
+func shuffleSApubs(arr []contract.EmailStealthPub) {
+	rand.Seed(uint64(time.Now().UnixNano()))
+	rand.Shuffle(len(arr), func(i, j int) {
+		arr[i], arr[j] = arr[j], arr[i]
+	})
+}
+
 func isPrintable(s string) bool {
 	for _, r := range s {
 		if !unicode.IsPrint(r) {
@@ -194,18 +200,18 @@ func CreateTempCluster(client *ethclient.Client, ctc *contract.Contract, from Us
 		Smap[clusterId] = ClS
 		domain[dmId] = Domain{brdPks, brdPrivs[i+1], Smap}
 
-		tmpPsid := psids[i] + "@" + clusterId
-		users[i] = User{tmpPsid, nil, nil, sa1.S, sa2.S, "", "", domain}
+		//tmpPsid := psids[i] + "@" + clusterId
+		users[i] = User{psids[i], nil, nil, sa1.S, sa2.S, "", "", domain}
 		//fmt.Println("11111111", clusterId, dmId, users[i].Domains[dmId].Clusters[clusterId])
 		//ptr := users[i].Domains[dmId].SK.Di
-		addr := common.BytesToAddress(([]byte)(users[i].Addr))
-		para := []interface{}{"Register", tmpPsid, contract.EmailPK{G1ToPoint(sa1.S), G1ToPoint(sa2.S),
-			big.NewInt(0), addr, []contract.EmailG1Point{G1ToPoint(sa1.R), G1ToPoint(sa2.R)}}, psids[i]}
-		_ = Transact(client, from.Privatekey, big.NewInt(0), ctc, para).(*types.Receipt)
+		//addr := common.BytesToAddress(([]byte)(users[i].Addr))
+		//para := []interface{}{"Register", tmpPsid, contract.EmailPK{G1ToPoint(sa1.S), G1ToPoint(sa2.S),
+		//	big.NewInt(0), addr, []contract.EmailG1Point{G1ToPoint(sa1.R), G1ToPoint(sa2.R)}}, psids[i]}
+		//_ = Transact(client, from.Privatekey, big.NewInt(0), ctc, para).(*types.Receipt)
 	}
 
 	//ptr := users[0].Domains[dmId].SK.Di
-	RegDomain(client, ctc, from, brdPks, brdPrivs, users)
+	RegDomain(client, ctc, from, brdPks, brdPrivs, psids)
 	RegCluster(client, ctc, from, clusterId, brdPks, NArr, ClS)
 	//i := 0
 	//for i = 0; i < len(ClS); i++ {

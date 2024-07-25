@@ -10,6 +10,10 @@ import (
 
 func TestBcstLinkableCluster(t *testing.T) {
 	users, client, ctc := utils.DeployAndInitWallet()
+	psids := make([]string, len(users))
+	for i, user := range users {
+		psids[i] = user.Psid
+	}
 	//Bob is a domain administrator
 	n := len(users)
 	domainId := "google"
@@ -19,7 +23,7 @@ func TestBcstLinkableCluster(t *testing.T) {
 	//Bob.Domains = map[string]utils.Domains{domainId: {brdPks, brdPrivs[Bobindex], nil}}
 	fmt.Println("\n\n=============================register domain=====================")
 	//Bob sends brdPrivs to each domain member via one-to-one mailing (Here, sends secretkeys to the cluster)
-	utils.RegDomain(client, ctc, Bob, brdPks, brdPrivs, users)
+	utils.RegDomain(client, ctc, Bob, brdPks, brdPrivs, psids)
 
 	////Charlie is a cluster manager, Charlie generates \prod_j∈S g_{n+1-j} for the cluster
 	fmt.Println("=============================register cluster=====================")
@@ -69,12 +73,12 @@ func TestBcstOneshotCluster(t *testing.T) {
 
 	fmt.Println("\n\n=============================Bob creates temperory domain and cluster =====================")
 	createdUsers, createdClsId, ClS := utils.CreateTempCluster(client, ctc, users[0], psids)
-	tmpUser := utils.ResolveTmpUser(ctc, users[0].Psid, users[0].Aa, users[0].Bb, users[0].Addr, 0)
+	tmpUser := utils.ResolveUser(ctc, users[0].Psid, users[0].Aa, users[0].Bb, users[0].Privatekey, users[0].Addr)
 	fmt.Printf("domain size: %d, cluster size:%d\n", len(createdUsers), len(ClS))
 	for i := 0; i < 3; i++ {
 		fmt.Println("=============================Bob broadcast =====================", i)
-		msgCreated := []byte("Dear there, run -------by " + tmpUser[0].Psid)
-		utils.BroadcastTo(client, ctc, tmpUser[0], msgCreated, createdClsId)
+		msgCreated := []byte("Dear there, run -------by " + tmpUser.Psid)
+		utils.BroadcastTo(client, ctc, tmpUser, msgCreated, createdClsId)
 	}
 
 	//Alice is a cluster and ties to read the email
@@ -85,13 +89,11 @@ func TestBcstOneshotCluster(t *testing.T) {
 	}
 	for j := 0; j < num; j++ {
 		user := utils.ResolveUser(ctc, psids[j], users[j].Aa, users[j].Bb, users[j].Privatekey, users[j].Addr)
-		tmpUsers := utils.ResolveTmpUser(ctc, user.Psid, user.Aa, user.Bb, user.Addr, j)
-		for i := 0; i < len(tmpUsers); i++ {
-			utils.ReadBrdMail(ctc, tmpUsers[i])
-		}
+		//tmpUsers := utils.ResolveUser(ctc, user.Psid, user.Aa, user.Bb, user.Addr, j)
+		utils.ReadBrdMail(ctc, user)
 	}
 
 	fmt.Println("=============================withdraw deposited money=====================")
 	_2dmId := strings.Split(createdClsId, "@")
-	utils.Reward(client, ctc, tmpUser[0], _2dmId[1])
+	utils.Reward(client, ctc, tmpUser, _2dmId[1])
 }
