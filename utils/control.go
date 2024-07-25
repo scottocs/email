@@ -10,6 +10,7 @@ import (
 	"email/crypto/aes"
 	"email/crypto/broadcast"
 	"email/crypto/stealth"
+	"encoding/json"
 	"fmt"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -120,8 +121,13 @@ func ReadMail(ctc *contract.Contract, my User) {
 		fmt.Println("Email content (read): \033[34m" + decRes + "\033[0m")
 	}
 }
-func RegCluster(client *ethclient.Client, ctc *contract.Contract, from User, clsId string, S []uint32) {
-	para := []interface{}{"RegCluster", clsId, S}
+func RegCluster(client *ethclient.Client, ctc *contract.Contract, from User, clsId string, brdPks broadcast.PKs, NArr []uint32, ClS []uint32) {
+	hdr, beK := brdPks.Encrypt(NArr)
+	ClSBytes, _ := json.Marshal(ClS)
+	ClSEncStr, _ := aes.Encrypt(ClSBytes, beK.Marshal()[:32])
+	//fmt.Printf("%v %v\n", NArr, beK.String())
+	domainHdr := contract.EmailBcstHeader{G1ToPoint(hdr.C0), G1ToPoint(hdr.C1), G2ToPoint(hdr.C0p)}
+	para := []interface{}{"RegCluster", clsId, ClSEncStr, domainHdr}
 	//fmt.Printf("%v", para)
 	_ = Transact(client, from.Privatekey, big.NewInt(0), ctc, para).(*types.Receipt)
 }
@@ -190,10 +196,23 @@ func ResolveTmpUser(ctc *contract.Contract, psid string, Aa *big.Int, Bb *big.In
 			brdPks := broadcast.PKs{PointsToG1(pArr), PointsToG2(qArr), *PointToG1(v), dmId}
 			var clsIds = map[string][]uint32{}
 			clsIdsDL, _ := ctc.GetMyClusters(&bind.CallOpts{}, dmId)
+			user.Domains[dmId] = Domain{brdPks, broadcast.SK{int(index.Int64()), *myBrdPriv}, clsIds}
+
+			NArr := make([]uint32, len(qArr)-1)
+			for j := 0; j < len(NArr); j++ {
+				NArr[j] = uint32(j + 1)
+			}
+
 			for j := 0; j < len(clsIdsDL); j++ {
 				clsId := clsIdsDL[j]
-				S, _ := ctc.GetS(&bind.CallOpts{}, clsId)
-				clsIds[clsId] = S
+				EncClS, _ := ctc.GetEncClS(&bind.CallOpts{}, clsId)
+				sk := user.Domains[dmId].SK
+
+				beKp := sk.Decrypt(NArr, broadcast.Header{PointToG1(EncClS.Hdr.C0), PointToG2(EncClS.Hdr.C0p), PointToG1(EncClS.Hdr.C1)}, user.Domains[dmId].PKs)
+				ClSStr, _ := aes.Decrypt(EncClS.Str, beKp.Marshal()[:32])
+				var ClS []uint32
+				json.Unmarshal([]byte(ClSStr), &ClS)
+				clsIds[clsId] = ClS
 			}
 			user.Domains[dmId] = Domain{brdPks, broadcast.SK{int(index.Int64()), *myBrdPriv}, clsIds}
 		}
@@ -225,10 +244,22 @@ func ResolveUser(ctc *contract.Contract, psid string, Aa *big.Int, Bb *big.Int, 
 		var clsIds = map[string][]uint32{}
 
 		clsIdsDL, _ := ctc.GetMyClusters(&bind.CallOpts{}, dmId)
+
+		NArr := make([]uint32, len(qArr)-1)
+		for j := 0; j < len(NArr); j++ {
+			NArr[j] = uint32(j + 1)
+		}
+		user.Domains[dmId] = Domain{brdPks, broadcast.SK{int(index.Int64()), *myBrdPriv}, clsIds}
 		for j := 0; j < len(clsIdsDL); j++ {
 			clsId := clsIdsDL[j]
-			S, _ := ctc.GetS(&bind.CallOpts{}, clsId)
-			clsIds[clsId] = S
+			EncClS, _ := ctc.GetEncClS(&bind.CallOpts{}, clsId)
+			sk := user.Domains[dmId].SK
+			beKp := sk.Decrypt(NArr, broadcast.Header{PointToG1(EncClS.Hdr.C0), PointToG2(EncClS.Hdr.C0p), PointToG1(EncClS.Hdr.C1)}, user.Domains[dmId].PKs)
+			ClSStr, _ := aes.Decrypt(EncClS.Str, beKp.Marshal()[:32])
+			var ClS []uint32
+			json.Unmarshal([]byte(ClSStr), &ClS)
+			//fmt.Printf("%v %v\n", NArr, beKp.String())
+			clsIds[clsId] = ClS
 		}
 		user.Domains[dmId] = Domain{brdPks, broadcast.SK{int(index.Int64()), *myBrdPriv}, clsIds}
 	}
@@ -264,10 +295,10 @@ func BroadcastTo(client *ethclient.Client, ctc *contract.Contract, sender User, 
 	ctilde = new(big.Int).Mod(ctilde, bn256.Order)
 	//fmt.Printf("%v, %d, %v\n", senderIndex, priv, SAPK.String())
 	proof := contract.EmailPi{G1ToPoint(Cp), c, ctilde}
-	clusterRecivers := contract.EmailBcstHeader{G1ToPoint(hdr.C0), G1ToPoint(hdr.C1), G2ToPoint(hdr.C0p)}
+	clusterHdr := contract.EmailBcstHeader{G1ToPoint(hdr.C0), G1ToPoint(hdr.C1), G2ToPoint(hdr.C0p)}
 	// schnorr sigma protocol verification
 	// fmt.Printf("point %v %v %v %v\n", proof, cid, clusterId, clusterRecivers)
-	para := []interface{}{"BcstTo", clusterRecivers, clusterId, proof, cid, sender.Psid}
+	para := []interface{}{"BcstTo", clusterHdr, clusterId, proof, cid, sender.Psid}
 	ether := big.NewInt(1000000000000000000)
 	ether100 := big.NewInt(1).Mul(ether, big.NewInt(100))
 	_ = Transact(client, sender.Privatekey, ether100, ctc, para).(*types.Receipt)

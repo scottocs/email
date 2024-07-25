@@ -120,28 +120,6 @@ contract Email {
 		res[1]=string(right);
 		return res;
 	}
-	
-	mapping(string => PK) public psid2PK;
-	mapping(string => mapping(uint64 => string[])) public psid2Day2Cid;
-	mapping(string => Mail) public cid2Mail;
-	
-
-	//seperately store fields in dmId2Domain/dmId2PArr/dmId2QArr/dmId2Psids/StealthEncPriv/psid2DmIds can save gas cost when accessing them
-	mapping(string => Domain) public dmId2Domain;
-	mapping(string => G1Point[]) public dmId2PArr; // (g,g_1,...,g_n, g_{n+2},...,g_{2n}) and g is bn128 G1 generator 
-	mapping(string => G2Point[]) dmId2QArr; // (h,h_1,...,h_n, h_{n+2},...,h_{2n}) and h is bn128 G2 generator 	
-	mapping(string => string[]) dmId2Psids; // the pseudonyms of each member in the domain
-	mapping(string => mapping(string => StealthEncPriv)) dmId2Psid2PrivC;// ElGamal-encrypted private keys {g_i^\gamma}	
-	mapping(string => DomainId[]) public psid2DmIds;
-
-	mapping(string => string[]) public dmId2ClsIds;
-	mapping(string => uint32[]) public clsId2S;	
-
-	mapping(string => string[]) public psid2TmpPsid;
-
-	mapping(string => BcstHeader) public cid2BcstMails;	
-	mapping(string => mapping(uint64 => string[])) public clsId2Day2Cid;
-
 	struct G1Point {
 		uint X; // x-coordinate of point in bn128 G1
 		uint Y; // y-coordinate of point in bn128 G1
@@ -150,13 +128,37 @@ contract Email {
 		uint[2] X; // x-coordinate of point in bn128 G2
 		uint[2] Y; // y-coordinate of point in bn128 G2
 	}
+	
+	mapping(string => PK) psid2PK;
+	mapping(string => mapping(uint64 => string[])) psid2Day2Cid;
+	mapping(string => Mail) cid2Mail;
+	
+
+	//seperately store fields in dmId2Domain/dmId2PArr/dmId2QArr/dmId2Psids/StealthEncPriv/psid2DmIds can save gas cost when accessing them
+	mapping(string => Domain) dmId2Domain;
+	mapping(string => G1Point[]) dmId2PArr; // (g,g_1,...,g_n, g_{n+2},...,g_{2n}) on G1
+	mapping(string => G2Point[]) dmId2QArr; // (h,h_1,...,h_n, h_{n+2},...,h_{2n}) on G2
+	mapping(string => string[]) dmId2Psids; // the pseudonyms of each member in the domain
+	mapping(string => mapping(string => StealthEncPriv)) dmId2Psid2PrivC;// ElGamal-encrypted private keys {g_i^\gamma}	
+	mapping(string => DomainId[]) psid2DmIds;
+
+	mapping(string => string[]) dmId2ClsIds;
+	mapping(string => EncClS) clsId2EncS;	
+
+	mapping(string => string[]) psid2TmpPsid;
+
+	mapping(string => BcstHeader) cid2BcstMails;	
+	mapping(string => mapping(uint64 => string[])) clsId2Day2Cid;
+
+	
 	struct PK {
 		G1Point A;// used in stealth address generation, A= g^a
 		G1Point B;// used in stealth address generation, B= g^b
 		uint256 fee;// requested minimal fee when receiving an email        
 		address payable wallet; // An address used in receiving digital currency
-		G1Point[] extra; // stores the stealth address information when the PK is created by others
+		G1Point[] extra; // stores the stealth address for temporary a user
 	}
+
 	struct StealthPub{
 		G1Point R; // stealth address used for verification, R =g^r
 		G1Point S; // stealth address and the private key s = a+ H(R^b)
@@ -190,6 +192,11 @@ contract Email {
 		G1Point C0; // C0 of BE header
 		G1Point C1; // C1 of BE header
 		G2Point C0p;// identical C0, but the base is h of G2
+	}
+
+	struct EncClS {
+		BcstHeader hdr; // BE ciphertext
+		string str; // ciphertext of ClS
 	}
 	struct Pi{
 		G1Point Cp;// g^{s'}, Schnorr sigma protocol commitment
@@ -318,16 +325,16 @@ contract Email {
 	}
 
 		
-	function regCluster(string memory clsId, uint32[] memory S) public payable {
+	function regCluster(string memory clsId, string memory ClSEncStr, BcstHeader memory hdr) public payable {
 		string[] memory parts = splitAt(clsId);
 		Domain memory dm = dmId2Domain[parts[1]];
 		if (dm.admin == msg.sender){//cluster should be built when a dm exists
-			clsId2S[clsId]= S;
+			clsId2EncS[clsId]= EncClS(hdr, ClSEncStr);
 			dmId2ClsIds[parts[1]].push(clsId);
 		}
 	}
-	function getS(string memory clsId) public view returns (uint32[] memory) {
-		return clsId2S[clsId];
+	function getEncClS(string memory clsId) public view returns (EncClS memory) {
+		return clsId2EncS[clsId];
 	}
 
 	function getBrdEncPrivs(string memory dmId, string memory psid) public view returns (StealthEncPriv memory) {
@@ -355,7 +362,9 @@ contract Email {
 			uint64 day = currentTime - (currentTime % 86400);
 			cid2BcstMails[cid] = hdr;
 			clsId2Day2Cid[clsId][day].push(cid);
-			emit Event("bcstTo", msg.sender, msg.value, cid, new string[](0));
+			string[] memory res = new string[](1);
+			res[0]=string(clsId);
+			emit Event("bcstTo", msg.sender, msg.value, cid, res);
 			return true;
 		}else{
 			return false;

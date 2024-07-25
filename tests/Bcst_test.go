@@ -24,14 +24,16 @@ func TestBcstLinkableCluster(t *testing.T) {
 	////Charlie is a cluster manager, Charlie generates \prod_j∈S g_{n+1-j} for the cluster
 	fmt.Println("=============================register cluster=====================")
 	size := n
-	S := make([]uint32, size)
+	NArr := make([]uint32, size)
 	for i := 0; i < size; i++ {
-		S[i] = uint32(i) + 1
+		NArr[i] = uint32(i) + 1
 	}
-	fmt.Printf("domain size: %d, cluster size:%d\n", len(users), len(S))
+	ClS := NArr[0:n]
+	fmt.Printf("domain size: %d, cluster size:%d\n", len(users), len(NArr))
 	clusterId := "android@" + domainId
 	// cluster should be created by the domain administrator
-	utils.RegCluster(client, ctc, Bob, clusterId, S)
+
+	utils.RegCluster(client, ctc, Bob, clusterId, brdPks, NArr, ClS)
 	//todo multiple clusters
 
 	// Emily as a member, broadcast a email

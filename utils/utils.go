@@ -176,16 +176,14 @@ func CreateTempCluster(client *ethclient.Client, ctc *contract.Contract, from Us
 	brdPks, brdPrivs := broadcast.Setup(len(psids), dmId)
 	clusterId := "tmp@" + dmId
 	//fmt.Println(rand2.Int(), clusterId, dmId)
-	ClS := make([]uint32, len(psids))
-	for i := 0; i < len(ClS); i++ {
-		ClS[i] = uint32(i) + 1
+	NArr := make([]uint32, len(psids))
+	for i := 0; i < len(NArr); i++ {
+		NArr[i] = uint32(i) + 1
 	}
 	//construct cluster from the provided psids
-	shuffle(ClS)
-	ClS = ClS[0 : len(ClS)/2]
-
+	shuffle(NArr)
+	ClS := NArr[0 : len(NArr)/2]
 	for i := 0; i < len(psids); i++ {
-		//ClS[i] = uint32(i) + 1
 		pkRes, _ := ctc.GetPK(&bind.CallOpts{}, psids[i])
 		sa1 := stealth.CalculatePub(stealth.PublicKey{PointToG1(pkRes.A), PointToG1(pkRes.B)}) //A
 		sa2 := stealth.CalculatePub(stealth.PublicKey{PointToG1(pkRes.A), PointToG1(pkRes.B)}) //B
@@ -204,14 +202,11 @@ func CreateTempCluster(client *ethclient.Client, ctc *contract.Contract, from Us
 		para := []interface{}{"Register", tmpPsid, contract.EmailPK{G1ToPoint(sa1.S), G1ToPoint(sa2.S),
 			big.NewInt(0), addr, []contract.EmailG1Point{G1ToPoint(sa1.R), G1ToPoint(sa2.R)}}, psids[i]}
 		_ = Transact(client, from.Privatekey, big.NewInt(0), ctc, para).(*types.Receipt)
-
-		// para2 := []interface{}{"LinkTmpPsid", psids[i], tmpPsid}
-		// _ = Transact(client, from.Privatekey, big.NewInt(0), ctc, para2).(*types.Receipt)
 	}
 
 	//ptr := users[0].Domains[dmId].SK.Di
 	RegDomain(client, ctc, from, brdPks, brdPrivs, users)
-	RegCluster(client, ctc, from, clusterId, ClS)
+	RegCluster(client, ctc, from, clusterId, brdPks, NArr, ClS)
 	//i := 0
 	//for i = 0; i < len(ClS); i++ {
 	//	if psids[ClS[i]-1] == "Alice" {
