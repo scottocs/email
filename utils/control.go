@@ -51,7 +51,7 @@ func DeployAndInitWallet() ([]User, *ethclient.Client, *contract.Contract) {
 	//Users register their public keys (A B)
 	//names := []string{"Bob", "Alice", "Charlie", "Emily", "Alexander", "Sophia", "Benjamin", "Olivia", "James", "Peggy"}
 	names := []string{"Bob", "Alice", "Charlie", "Emily", "Alexander", "Sophia", "Benjamin", "Olivia", "James", "Peggy", "Isabella", "Jacob", "Ava", "Matthew", "Mia", "Daniel", "Abigail", "Ethan", "Harper", "Max", "Amelia", "Ryan", "Evelyn", "Nathan", "Elizabeth", "Samuel", "Charlotte", "Christopher", "Grace", "Jonathan", "Lily", "Gabriel", "Ella", "Andrew", "Avery", "Joshua", "Sofia", "Anthony", "Scarlett", "Caleb", "Victoria", "Logan", "Madison", "Isaac", "Eleanor", "Lucas", "Hannah", "Owen", "Addison", "Dylan", "Zoe", "Jack", "Penelope", "Luke", "Layla", "Jeremiah", "Natalie", "Isaiah", "Audrey", "Carter", "Leah", "Josiah", "Savannah", "Julian", "Brooklyn", "Wyatt", "Stella", "Hunter", "Claire", "Levi", "Skylar", "Christian", "Maya", "Eli", "Paisley", "Lincoln", "Anna", "Jordan", "Caroline", "Charles", "Eliana", "Thomas", "Ruby", "Aaron", "Aria", "Connor", "Aurora", "Cameron", "Naomi", "Adrian", "Valentina", "Landon", "Alexa", "Gavin", "Lydia", "Evan", "Piper", "Sebastian", "Ariana", "Cooper", "Sadie"}
-	names = names[:10]
+	names = names[:100]
 	users := make([]User, len(names))
 	for i := 0; i < len(names); i++ {
 		a, _ := rand.Int(rand.Reader, bn256.Order)
@@ -157,14 +157,6 @@ func RegDomain(client *ethclient.Client, ctc *contract.Contract, from User, cpk 
 	_ = Transact(client, from.Privatekey, big.NewInt(0), ctc, para).(*types.Receipt)
 }
 
-//	func DownloadPKs(ctc *contract.Contract, clsId string) broadcast.SK {
-//		dmId := strings.Split(clsId, "@")[1]
-//		pArr, qArr, v, _ := ctc.GetBrdPKs(&bind.CallOpts{}, dmId)
-//		S, _ := ctc.GetS(&bind.CallOpts{}, clsId)
-//		//fmt.Println(S)
-//		brdPks := broadcast.PKs{PointsToG1(pArr), PointsToG2(qArr), *PointToG1(v), dmId}
-//	}
-
 func ResolveUser(ctc *contract.Contract, psid string, Aa *big.Int, Bb *big.Int, priStr string, addr string) User {
 	DomainIds, _ := ctc.GetMyDomains(&bind.CallOpts{}, psid)
 	A := new(bn256.G1).ScalarBaseMult(Aa)
@@ -185,7 +177,6 @@ func ResolveUser(ctc *contract.Contract, psid string, Aa *big.Int, Bb *big.Int, 
 				break
 			}
 		}
-		//priv := stealth.ResolvePriv(stealth.SecretKey{user.Aa, user.Bb}, stealth.StealthPub{PointToG1(encPrivs.R), PointToG1(encPrivs.S)})
 		//ElGamal Decryption
 		c1pNeg := new(bn256.G1).Neg(PointToG1(encPrivs.C1))
 		myBrdPriv := new(bn256.G1).Add(PointToG1(encPrivs.C2), new(bn256.G1).ScalarMult(c1pNeg, priv))

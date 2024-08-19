@@ -195,19 +195,11 @@ func CreateTempCluster(client *ethclient.Client, ctc *contract.Contract, from Us
 		sa2 := stealth.CalculatePub(stealth.PublicKey{PointToG1(pkRes.A), PointToG1(pkRes.B)}) //B
 
 		var domain = make(map[string]Domain)
-		//map[string][]uint32{clusterId: SEmily}
 		var Smap = make(map[string][]uint32)
 		Smap[clusterId] = ClS
 		domain[dmId] = Domain{brdPks, brdPrivs[i+1], Smap}
-
-		//tmpPsid := psids[i] + "@" + clusterId
 		users[i] = User{psids[i], nil, nil, sa1.S, sa2.S, "", "", domain}
-		//fmt.Println("11111111", clusterId, dmId, users[i].Domains[dmId].Clusters[clusterId])
-		//ptr := users[i].Domains[dmId].SK.Di
-		//addr := common.BytesToAddress(([]byte)(users[i].Addr))
-		//para := []interface{}{"Register", tmpPsid, contract.EmailPK{G1ToPoint(sa1.S), G1ToPoint(sa2.S),
-		//	big.NewInt(0), addr, []contract.EmailG1Point{G1ToPoint(sa1.R), G1ToPoint(sa2.R)}}, psids[i]}
-		//_ = Transact(client, from.Privatekey, big.NewInt(0), ctc, para).(*types.Receipt)
+
 	}
 
 	//ptr := users[0].Domains[dmId].SK.Di

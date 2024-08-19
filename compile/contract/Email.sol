@@ -131,7 +131,7 @@ contract Email {
 	
 	mapping(string => PK) psid2PK;
 	mapping(string => mapping(uint64 => string[])) psid2Day2Cid;
-	mapping(string => Mail) cid2Mail;
+	mapping(string => Mail) cid2SA;
 	
 
 	//seperately store fields in dmId2Domain/dmId2PArr/dmId2QArr/dmId2Psids/StealthEncPriv/psid2DmIds can save gas cost when accessing them
@@ -149,7 +149,7 @@ contract Email {
 	mapping(string => EncClS) clsId2EncS;	
 
 	
-	mapping(string => BcstHeader) cid2BcstMails;	
+	mapping(string => BcstHeader) cid2BcstHdr;	
 	mapping(string => mapping(uint64 => string[])) clsId2Day2Cid;
 
 	
@@ -267,7 +267,7 @@ contract Email {
 	
 	function oto(Mail memory mail, string memory cid, string[] memory psids) public payable {
 		// uint256 gasAtStart = gasleft();
-		cid2Mail[cid]=mail;
+		cid2SA[cid]=mail;
 		uint64 currentTime = uint64(block.timestamp);
 		uint64 day = currentTime - (currentTime % 86400);
 
@@ -291,7 +291,7 @@ contract Email {
 		string[] memory cids = psid2Day2Cid[psid][day];
 		Mail[] memory mails = new Mail[](cids.length);
 		for (uint i = 0; i < cids.length; i++) {
-			mails[i]=cid2Mail[cids[i]];
+			mails[i]=cid2SA[cids[i]];
 		}
 		return (cids, mails);
 	}
@@ -353,7 +353,7 @@ contract Email {
 			// pairingRes= true;//cost ~20000 gas	
 			uint64 currentTime = uint64(block.timestamp);
 			uint64 day = currentTime - (currentTime % 86400);
-			cid2BcstMails[cid] = hdr;
+			cid2BcstHdr[cid] = hdr;
 			clsId2Day2Cid[clsId][day].push(cid);
 			string[] memory res = new string[](1);
 			res[0]=string(clsId);
@@ -399,11 +399,11 @@ contract Email {
 
 	function getDailyBrdMail(string memory clsId, uint64 day) public view returns (string[] memory, BcstHeader[] memory) {
 		string[] memory cids = clsId2Day2Cid[clsId][day];
-		BcstHeader[] memory mails = new BcstHeader[](cids.length);
+		BcstHeader[] memory hdrs = new BcstHeader[](cids.length);
 		for (uint i = 0; i < cids.length; i++) {
-			mails[i]=cid2BcstMails[cids[i]];
+			hdrs[i]=cid2BcstHdr[cids[i]];
 		}
-		return (cids, mails);
+		return (cids, hdrs);
 	}
 
 	
