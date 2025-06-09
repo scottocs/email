@@ -12,6 +12,7 @@ require (
 )
 
 require (
+	github.com/ChainSafe/go-signature-adaptor v0.0.0-20230213204951-bb8424b4e806 // indirect
 	github.com/FactomProject/basen v0.0.0-20150613233007-fe3947df716e // indirect
 	github.com/FactomProject/btcutilecc v0.0.0-20130527213604-d3a63a5752ec // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
