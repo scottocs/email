@@ -43,12 +43,14 @@ Version: 0.8.25-develop
     ganache --mnemonic "email" -l 90071992547 -e 100000
     ```
 
-3. Compile the smart contract code
+3. lauch IPFS Desktop
+
+4. Compile the smart contract code
 
     ```bash
     bash compile.sh
     ```
-4. Start the IPFS serivce
+   
 5. Start the monitor process (optional)
 
     ```bash

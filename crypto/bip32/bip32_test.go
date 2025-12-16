@@ -1,12 +1,28 @@
 package bip32
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/sha256"
 	"fmt"
-	"github.com/tyler-smith/go-bip32"
 	"log"
+	"math/big"
 	"testing"
 	"time"
+
+	"github.com/tyler-smith/go-bip32"
 )
+
+// 将 BIP32 子密钥转换为 ECDSA 私钥
+func bip32ToECDSA(key *bip32.Key) *ecdsa.PrivateKey {
+	curve := elliptic.P256()
+	priv := new(ecdsa.PrivateKey)
+	priv.PublicKey.Curve = curve
+	priv.D = new(big.Int).SetBytes(key.Key)
+	priv.PublicKey.X, priv.PublicKey.Y = curve.ScalarBaseMult(priv.D.Bytes())
+	return priv
+}
 
 func TestBIP32(t *testing.T) {
 	// test BIP32
@@ -27,8 +43,21 @@ func TestBIP32(t *testing.T) {
 	for i := 0; i < int(n); i++ {
 		departmentKeys["Sales"], _ = computerVoiceMasterKey.NewChildKey(11111111)
 	}
+
+	ecdsaKey := bip32ToECDSA(departmentKeys["Sales"])
+	data := make([]byte, 1024) // 1KB
+	rand.Read(data)
+	hash := sha256.Sum256(data)
+
+	r, s, err := ecdsa.Sign(rand.Reader, ecdsaKey, hash[:])
+	if err != nil {
+		t.Fatal(err)
+	}
+	valid := ecdsa.Verify(&ecdsaKey.PublicKey, hash[:], r, s)
+
+	//signDuration := time.Since(startSign)
 	endtime := time.Now().UnixMicro()
-	fmt.Printf("NewChildKey time cost %d us\n", (endtime-starttime)/n)
+	fmt.Printf("NewChildKey time cost %d us\n valid: %v\n", (endtime-starttime)/n, valid)
 	departmentKeys["Marketing"], _ = computerVoiceMasterKey.NewChildKey(1)
 	departmentKeys["Engineering"], _ = computerVoiceMasterKey.NewChildKey(2)
 	departmentKeys["Customer Support"], _ = computerVoiceMasterKey.NewChildKey(3)

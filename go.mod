@@ -7,16 +7,19 @@ require (
 	github.com/fentec-project/bn256 v0.0.0-20190726093940-0d0fc8bfeed0
 	github.com/ipfs/go-ipfs-api v0.7.0
 	github.com/joho/godotenv v1.5.1
+	github.com/noot/ring-go v0.0.0-20240617213643-1a8bebebd522
 	github.com/tyler-smith/go-bip32 v1.0.0
 	golang.org/x/crypto v0.24.0
+	golang.org/x/exp v0.0.0-20231110203233-9a3e6036ecaa
 )
 
 require (
-	github.com/ChainSafe/go-signature-adaptor v0.0.0-20230213204951-bb8424b4e806 // indirect
+	filippo.io/edwards25519 v1.0.0 // indirect
 	github.com/FactomProject/basen v0.0.0-20150613233007-fe3947df716e // indirect
 	github.com/FactomProject/btcutilecc v0.0.0-20130527213604-d3a63a5752ec // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/StackExchange/wmi v1.2.1 // indirect
+	github.com/athanorlabs/go-dleq v0.1.0 // indirect
 	github.com/benbjohnson/clock v1.3.0 // indirect
 	github.com/bits-and-blooms/bitset v1.13.0 // indirect
 	github.com/blang/semver/v4 v4.0.0 // indirect
@@ -60,7 +63,6 @@ require (
 	github.com/supranational/blst v0.3.12 // indirect
 	github.com/tklauser/go-sysconf v0.3.12 // indirect
 	github.com/tklauser/numcpus v0.6.1 // indirect
-	golang.org/x/exp v0.0.0-20231110203233-9a3e6036ecaa // indirect
 	golang.org/x/net v0.24.0 // indirect
 	golang.org/x/sync v0.7.0 // indirect
 	golang.org/x/sys v0.21.0 // indirect

@@ -12,13 +12,6 @@ import (
 	"email/crypto/stealth"
 	"encoding/json"
 	"fmt"
-	"github.com/ethereum/go-ethereum/accounts/abi"
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/ethclient"
-	"github.com/fentec-project/bn256"
 	"io"
 	"io/ioutil"
 	"log"
@@ -28,6 +21,14 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/ethereum/go-ethereum/accounts/abi"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/fentec-project/bn256"
 )
 
 func DeployAndInitWallet() ([]User, *ethclient.Client, *contract.Contract) {
@@ -78,11 +79,14 @@ func Oto(client *ethclient.Client, ctc *contract.Contract, sender User, msg []by
 	key := new(bn256.G1).ScalarBaseMult(m)
 
 	pkRes, _ := ctc.GetPK(&bind.CallOpts{}, to.Psid)
+	starttime := time.Now().UnixMicro()
 	sa := stealth.CalculatePub(stealth.PublicKey{PointToG1(pkRes.A), PointToG1(pkRes.B)})
 	r, _ := rand.Int(rand.Reader, bn256.Order)
 	c1 := new(bn256.G1).ScalarBaseMult(r) // c1 = r * G
 	c2 := new(bn256.G1).Add(new(bn256.G1).ScalarMult(sa.S, r), key)
 	ct, _ := aes.Encrypt(msg, key.Marshal()[:32])
+	endtime := time.Now().UnixMicro()
+	fmt.Printf("enc time cost %d us \n%v\n", (endtime - starttime), ct)
 	cid := IPFSUpload(ct)
 	mail := contract.EmailMail{contract.EmailStealthPub{G1ToPoint(sa.R), G1ToPoint(sa.S)}, G1ToPoint(c1), G1ToPoint(c2)}
 	para := []interface{}{"Oto", mail, cid, recs}
@@ -111,6 +115,7 @@ func ReadMail(ctc *contract.Contract, my User) {
 		GetIPFSClient().Get(cid2Flag[0], dir)
 		file, _ := os.Open(dir + cid2Flag[0])
 		content, _ := io.ReadAll(file)
+		starttime := time.Now().UnixMicro()
 		decRes := string(content)
 		//  ElGamal decrypt
 		c1pNeg := new(bn256.G1).Neg(PointToG1(dayMails[i].C1))
@@ -118,6 +123,8 @@ func ReadMail(ctc *contract.Contract, my User) {
 		keyp := new(bn256.G1).Add(c2p, new(bn256.G1).ScalarMult(c1pNeg, sp))
 		decRes, _ = aes.Decrypt(decRes, keyp.Marshal()[:32])
 		//}
+		endtime := time.Now().UnixMicro()
+		fmt.Printf("dec time cost %d us \n%v\n", (endtime - starttime), decRes)
 		fmt.Println("Email content (read): \033[34m" + decRes + "\033[0m")
 	}
 }
